@@ -7,6 +7,10 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <canvas id="particleCanvas"></canvas>
+
+  <div id="modeLabel" class="mode-label"></div>
+
   <div class="app" id="app">
     <div class="clock-wrap">
       <div class="canvas-stack">
@@ -32,6 +36,16 @@
           Flip tide direction (fill from center outward)
         </label>
         <label>
+          Background Animation
+          <select id="particleMode">
+            <option value="none">None</option>
+            <option value="bubbles">Bubbles</option>
+            <option value="plankton">Plankton</option>
+            <option value="pulse">Pulse</option>
+            <option value="bokeh">Bokeh</option>
+          </select>
+        </label>
+        <label>
           Station Name
           <span id="stationName" class="station-name">North Fork, Nehalem River, OR</span>
         </label>
@@ -43,6 +57,7 @@
   </div>
 
   <script src="tideClock.js"></script>
+  <script src="particles.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

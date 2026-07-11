@@ -16,8 +16,35 @@ body {
   overflow: hidden;
 }
 
+#particleCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mode-label {
+  position: fixed;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cfe8f2;
+  text-shadow: 0 0 12px rgba(79, 214, 255, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+
 .app {
   position: relative;
+  z-index: 10;
   width: 100vw;
   height: 100vh;
   display: flex;
@@ -125,7 +152,8 @@ canvas {
   gap: 4px;
 }
 
-.settings-panel-inner input {
+.settings-panel-inner input,
+.settings-panel-inner select {
   background: #10202e;
   border: 1px solid #1f3b4d;
   color: #e8f1f5;

@@ -13,6 +13,19 @@ const faceCanvas = document.getElementById("clockFace");
 const handsCanvas = document.getElementById("clockHands");
 const tideClock = new TideClock(faceCanvas, handsCanvas);
 
+const particleCanvas = document.getElementById("particleCanvas");
+const particleField = new ParticleField(particleCanvas);
+const clockStackEl = document.querySelector(".canvas-stack");
+const modeLabelEl = document.getElementById("modeLabel");
+const PARTICLE_MODES = ["none", "bubbles", "plankton", "pulse", "bokeh"];
+const PARTICLE_MODE_NAMES = {
+  none: "None",
+  bubbles: "Bubbles",
+  plankton: "Plankton",
+  pulse: "Pulse",
+  bokeh: "Bokeh",
+};
+
 // How often to redraw the tide ring/face (ms). Tide data changes slowly,
 // so this can be much less frequent than the hands tick.
 const TIDE_REDRAW_INTERVAL_MS = 10 * 1000;
@@ -32,6 +45,7 @@ const appEl = document.getElementById("app");
 const tapMenu = document.getElementById("tapMenu");
 const useLocationBtn = document.getElementById("useLocationBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
+const particleModeSelect = document.getElementById("particleMode");
 
 let redrawTimer = null;
 let currentSamples = null;
@@ -39,6 +53,59 @@ let currentHeightRange = { hMin: -2, hMax: 10 };
 
 // Restore the "flip tide direction" preference from localStorage.
 invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
+
+// Restore the background animation preference from localStorage.
+let currentParticleMode = localStorage.getItem("particleMode") || "none";
+if (!PARTICLE_MODES.includes(currentParticleMode)) currentParticleMode = "none";
+particleModeSelect.value = currentParticleMode;
+
+function setParticleMode(mode, showLabel = true) {
+  currentParticleMode = mode;
+  localStorage.setItem("particleMode", mode);
+  particleModeSelect.value = mode;
+  particleField.setMode(mode);
+  if (showLabel) showModeLabel(PARTICLE_MODE_NAMES[mode] || mode);
+}
+
+let modeLabelFadeTimer = null;
+function showModeLabel(text) {
+  clearTimeout(modeLabelFadeTimer);
+  modeLabelEl.textContent = text;
+  // Reset to fully visible immediately (interrupt any in-flight fade).
+  modeLabelEl.style.transition = "none";
+  modeLabelEl.style.opacity = "1";
+  // Force reflow so the transition re-applies cleanly next time we fade.
+  void modeLabelEl.offsetHeight;
+  modeLabelEl.style.transition = "opacity 1.2s ease";
+  modeLabelFadeTimer = setTimeout(() => {
+    modeLabelEl.style.opacity = "0";
+  }, 300);
+}
+
+function resizeParticleCanvas() {
+  particleField.resize();
+  particleField.updateClockGeometry(clockStackEl);
+}
+window.addEventListener("resize", resizeParticleCanvas);
+resizeParticleCanvas();
+
+particleModeSelect.addEventListener("change", () => {
+  setParticleMode(particleModeSelect.value);
+});
+
+particleField.setMode(currentParticleMode);
+particleField.start();
+
+// Restore intensity preference (0.25 .. 3.0, default 1.0).
+let currentIntensity = parseFloat(localStorage.getItem("particleIntensity")) || 1.0;
+particleField.setIntensity(currentIntensity);
+
+function setIntensity(value) {
+  currentIntensity = Math.min(3.0, Math.max(0.25, Math.round(value * 4) / 4));
+  localStorage.setItem("particleIntensity", currentIntensity);
+  particleField.setIntensity(currentIntensity);
+  showModeLabel(`${PARTICLE_MODE_NAMES[currentParticleMode] || currentParticleMode} \u00d7${currentIntensity.toFixed(2).replace(/\.?0+$/, "") || "1"}`);
+}
 
 /** Computes a stable hMin/hMax from a full sample set, rounded outward to
  *  the nearest 2ft gridline boundary, so the outermost gridline ring always
@@ -233,6 +300,20 @@ function renderFace() {
   const now = new Date();
   const opts = { ...currentHeightRange, invertTide: invertTideCheckbox.checked };
   tideClock.drawFace(currentSamples, now, opts);
+
+  // Feed current tide height (normalized) + trend into the particle field
+  // for tide-reactive effects (e.g. bubbles speed/density).
+  const nearest = currentSamples.reduce((best, s) => {
+    const d = Math.abs(s.time - now);
+    return !best || d < Math.abs(best.time - now) ? s : best;
+  }, null);
+  if (nearest) {
+    const norm = TideClock.normalizeHeight(nearest.height, currentHeightRange.hMin, currentHeightRange.hMax);
+    const idx = currentSamples.indexOf(nearest);
+    const prev = currentSamples[Math.max(0, idx - 1)];
+    const rising = nearest.height >= (prev ? prev.height : nearest.height);
+    particleField.setTideInfo(norm, rising);
+  }
 }
 
 function renderHands() {
@@ -327,7 +408,21 @@ document.addEventListener("keydown", (e) => {
     invertTideCheckbox.checked = !invertTideCheckbox.checked;
     localStorage.setItem("invertTide", invertTideCheckbox.checked);
     renderFace();
+  } else if (e.key === "a" || e.key === "A") {
+    const idx = PARTICLE_MODES.indexOf(currentParticleMode);
+    const next = PARTICLE_MODES[(idx + 1) % PARTICLE_MODES.length];
+    setParticleMode(next);
+  } else if (e.key === ">" || e.key === ".") {
+    setIntensity(currentIntensity + 0.25);
+  } else if (e.key === "<" || e.key === ",") {
+    setIntensity(currentIntensity - 0.25);
   }
+});
+
+// Recompute clock geometry (for the particle clip circle) whenever the
+// layout might have changed size, e.g. entering/exiting full screen.
+document.addEventListener("fullscreenchange", () => {
+  setTimeout(resizeParticleCanvas, 50);
 });
 
 fullscreenBtn.addEventListener("click", (e) => {

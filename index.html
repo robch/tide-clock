@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tide Clock</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="clock-wrap">
+      <div class="canvas-stack">
+        <canvas id="clockFace" width="600" height="600"></canvas>
+        <canvas id="clockHands" width="600" height="600"></canvas>
+      </div>
+    </div>
+
+    <div id="tapMenu" class="tap-menu hidden">
+      <button id="settingsBtn" class="tap-menu-btn">Settings</button>
+      <button id="fullscreenBtn" class="tap-menu-btn">Full Screen</button>
+    </div>
+
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-panel-inner">
+        <label>
+          Station ID
+          <input id="stationId" type="text" value="9437954" />
+        </label>
+        <button id="useLocationBtn" class="secondary-btn">📍 Use My Location</button>
+        <label>
+          Station Name
+          <span id="stationName" class="station-name">North Fork, Nehalem River, OR</span>
+        </label>
+        <button id="loadBtn">Load Tides</button>
+        <span id="status" class="status"></span>
+        <button id="closeSettingsBtn" class="icon-btn close-btn" title="Close">&times;</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="tideClock.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

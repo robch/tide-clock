@@ -1,0 +1,199 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: radial-gradient(circle at 50% 0%, #10202e 0%, #04080c 70%);
+  color: #e8f1f5;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clock-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+canvas {
+  max-width: 100%;
+  height: auto;
+  background: transparent;
+}
+
+.canvas-stack {
+  position: relative;
+  width: min(600px, 92vmin);
+  max-width: 100%;
+}
+
+.canvas-stack canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.canvas-stack canvas#clockHands {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Tap-anywhere overlay menu: two floating pill buttons, centered. */
+.tap-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 16px;
+  z-index: 15;
+}
+
+.tap-menu.hidden {
+  display: none;
+}
+
+.tap-menu-btn {
+  background: rgba(14, 27, 36, 0.85);
+  border: 1px solid #2aa9d6;
+  color: #e8f1f5;
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-size: 1rem;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.tap-menu-btn:hover {
+  background: rgba(42, 169, 214, 0.35);
+}
+
+.settings-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(4, 8, 12, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.settings-panel.hidden {
+  display: none;
+}
+
+.settings-panel-inner {
+  position: relative;
+  background: #0e1b24;
+  border: 1px solid #1f3b4d;
+  border-radius: 12px;
+  padding: 28px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.settings-panel-inner label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: #7fa8bd;
+  text-align: left;
+  gap: 4px;
+}
+
+.settings-panel-inner input {
+  background: #10202e;
+  border: 1px solid #1f3b4d;
+  color: #e8f1f5;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.station-name {
+  padding: 4px 2px;
+  color: #cfe8f2;
+  font-size: 0.9rem;
+}
+
+.settings-panel-inner button#loadBtn {
+  background: linear-gradient(180deg, #2aa9d6, #1c7ba8);
+  border: none;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.settings-panel-inner button#loadBtn:hover {
+  filter: brightness(1.1);
+}
+
+.secondary-btn {
+  background: rgba(42, 169, 214, 0.15);
+  border: 1px solid #2aa9d6;
+  color: #cfe8f2;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  background: rgba(42, 169, 214, 0.3);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  font-size: 0.8rem;
+  color: #7fa8bd;
+}
+
+.icon-btn {
+  background: rgba(14, 27, 36, 0.7);
+  border: 1px solid #1f3b4d;
+  color: #cfe8f2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.close-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+}

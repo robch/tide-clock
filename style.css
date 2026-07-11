@@ -39,8 +39,8 @@ canvas {
 
 .canvas-stack {
   position: relative;
-  width: min(600px, 92vmin);
-  max-width: 100%;
+  width: min(92vw, 92vh);
+  height: min(92vw, 92vh);
 }
 
 .canvas-stack canvas {

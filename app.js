@@ -31,10 +31,14 @@ const fullscreenBtn = document.getElementById("fullscreenBtn");
 const appEl = document.getElementById("app");
 const tapMenu = document.getElementById("tapMenu");
 const useLocationBtn = document.getElementById("useLocationBtn");
+const invertTideCheckbox = document.getElementById("invertTide");
 
 let redrawTimer = null;
 let currentSamples = null;
 let currentHeightRange = { hMin: -2, hMax: 10 };
+
+// Restore the "flip tide direction" preference from localStorage.
+invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
 
 /** Computes a stable hMin/hMax from a full sample set, rounded outward to
  *  the nearest 2ft gridline boundary, so the outermost gridline ring always
@@ -227,7 +231,8 @@ function setStatus(text, isError = false) {
 function renderFace() {
   if (!currentSamples) return;
   const now = new Date();
-  tideClock.drawFace(currentSamples, now, currentHeightRange);
+  const opts = { ...currentHeightRange, invertTide: invertTideCheckbox.checked };
+  tideClock.drawFace(currentSamples, now, opts);
 }
 
 function renderHands() {
@@ -266,6 +271,10 @@ async function loadTides() {
 
 loadBtn.addEventListener("click", loadTides);
 useLocationBtn.addEventListener("click", useMyLocation);
+invertTideCheckbox.addEventListener("change", () => {
+  localStorage.setItem("invertTide", invertTideCheckbox.checked);
+  renderFace();
+});
 
 settingsBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -281,6 +290,43 @@ settingsPanel.addEventListener("click", (e) => {
   // Click on the dimmed backdrop (not the inner panel) closes it.
   if (e.target === settingsPanel) {
     settingsPanel.classList.add("hidden");
+  }
+});
+
+// Escape key dismisses the settings panel (and the tap menu, if open).
+// 'f' toggles full screen and 's' opens settings, both from anywhere on the
+// main screen (but not while typing into an input field).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (!settingsPanel.classList.contains("hidden")) {
+      settingsPanel.classList.add("hidden");
+    } else if (!tapMenu.classList.contains("hidden")) {
+      tapMenu.classList.add("hidden");
+    }
+    return;
+  }
+
+  // Don't hijack keys while the user is typing in a text field.
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+  if (e.key === "f" || e.key === "F") {
+    tapMenu.classList.add("hidden");
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error("Failed to enter fullscreen:", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  } else if (e.key === "s" || e.key === "S") {
+    tapMenu.classList.add("hidden");
+    settingsPanel.classList.remove("hidden");
+  } else if (e.key === " " || e.key === "Spacebar") {
+    e.preventDefault();
+    invertTideCheckbox.checked = !invertTideCheckbox.checked;
+    localStorage.setItem("invertTide", invertTideCheckbox.checked);
+    renderFace();
   }
 });
 

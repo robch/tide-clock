@@ -61,18 +61,19 @@ class TideClock {
     const heights = (visible.length ? visible : samples).map((s) => s.height);
     const hMin = opts.hMin !== undefined ? opts.hMin : Math.min(...heights);
     const hMax = opts.hMax !== undefined ? opts.hMax : Math.max(...heights);
+    const invert = !!opts.invertTide;
 
     // --- Draw base clock face (outer rim + inner dead-zone guide) ---
     this._drawFace(cx, cy, R);
 
     // --- Draw foot gridlines (concentric rings) so tide height is readable ---
-    this._drawFtGridlines(cx, cy, R, hMin, hMax, now);
+    this._drawFtGridlines(cx, cy, R, hMin, hMax, now, invert);
 
     // --- Draw the continuous tide curve as a filled ring, fixed to time-of-day ---
-    this._drawTideRing(cx, cy, R, visible, hMin, hMax);
+    this._drawTideRing(cx, cy, R, visible, hMin, hMax, invert);
 
     // --- Mark local high/low tide points along the visible curve ---
-    this._drawHighLowMarkers(cx, cy, R, visible, hMin, hMax);
+    this._drawHighLowMarkers(cx, cy, R, visible, hMin, hMax, invert);
 
     // --- Draw fixed clock numerals (12, 1 .. 11) + minute ticks ---
     this._drawNumeralsAndTicks(cx, cy, R);
@@ -103,7 +104,7 @@ class TideClock {
    *  the same radial mapping as the tide ring, with small labels placed just
    *  clockwise of the current-time position (near "now" but offset so the
    *  hour/minute/second hands don't sit on top of the labels). */
-  _drawFtGridlines(cx, cy, R, hMin, hMax, now) {
+  _drawFtGridlines(cx, cy, R, hMin, hMax, now, invert = false) {
     const ctx = this.faceCtx;
 
     const step = 2;
@@ -118,7 +119,7 @@ class TideClock {
     const labelTheta = nowTheta + labelOffset;
 
     for (let ft = start; ft <= end + EPS; ft += step) {
-      const r = TideClock.radiusForHeight(R, ft, hMin, hMax);
+      const r = TideClock.radiusForHeight(R, ft, hMin, hMax, invert);
 
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -148,7 +149,7 @@ class TideClock {
 
   /** Finds local high/low tide extrema within the visible samples and draws
    *  a marker dot (plus small height label) at each one. */
-  _drawHighLowMarkers(cx, cy, R, visible, hMin, hMax) {
+  _drawHighLowMarkers(cx, cy, R, visible, hMin, hMax, invert = false) {
     const ctx = this.faceCtx;
     if (visible.length < 3) return;
 
@@ -167,7 +168,7 @@ class TideClock {
       if (alpha <= 0) continue;
 
       const theta = TideClock.angleForTime(cur.time);
-      const r = TideClock.radiusForHeight(R, cur.height, hMin, hMax);
+      const r = TideClock.radiusForHeight(R, cur.height, hMin, hMax, invert);
       const x = cx + r * Math.sin(theta);
       const y = cy - r * Math.cos(theta);
 
@@ -338,10 +339,15 @@ class TideClock {
     ctx.fill();
   }
 
-  _drawTideRing(cx, cy, R, visible, hMin, hMax) {
+  _drawTideRing(cx, cy, R, visible, hMin, hMax, invert = false) {
     const ctx = this.faceCtx;
 
-    // Draw filled area between outer rim and the tide curve, per-segment opacity.
+    // Draw filled area between the "far" boundary and the tide curve, per-segment
+    // opacity. In normal mode the far boundary is the outer rim (fill grows inward
+    // from the perimeter as tide rises). In inverted mode the far boundary is the
+    // center-ish dead zone (fill grows outward from the middle as tide rises).
+    const farBoundaryR = invert ? R * 0.1 : R;
+
     for (let i = 0; i < visible.length - 1; i++) {
       const a = visible[i];
       const b = visible[i + 1];
@@ -355,19 +361,19 @@ class TideClock {
       const thetaA = TideClock.angleForTime(a.time);
       const thetaB = TideClock.angleForTime(b.time);
 
-      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax);
-      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax);
+      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax, invert);
+      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax, invert);
 
-      const pOuterA = { x: cx + R * Math.sin(thetaA), y: cy - R * Math.cos(thetaA) };
-      const pOuterB = { x: cx + R * Math.sin(thetaB), y: cy - R * Math.cos(thetaB) };
-      const pInnerA = { x: cx + rA * Math.sin(thetaA), y: cy - rA * Math.cos(thetaA) };
-      const pInnerB = { x: cx + rB * Math.sin(thetaB), y: cy - rB * Math.cos(thetaB) };
+      const pFarA = { x: cx + farBoundaryR * Math.sin(thetaA), y: cy - farBoundaryR * Math.cos(thetaA) };
+      const pFarB = { x: cx + farBoundaryR * Math.sin(thetaB), y: cy - farBoundaryR * Math.cos(thetaB) };
+      const pCurveA = { x: cx + rA * Math.sin(thetaA), y: cy - rA * Math.cos(thetaA) };
+      const pCurveB = { x: cx + rB * Math.sin(thetaB), y: cy - rB * Math.cos(thetaB) };
 
       ctx.beginPath();
-      ctx.moveTo(pOuterA.x, pOuterA.y);
-      ctx.lineTo(pOuterB.x, pOuterB.y);
-      ctx.lineTo(pInnerB.x, pInnerB.y);
-      ctx.lineTo(pInnerA.x, pInnerA.y);
+      ctx.moveTo(pFarA.x, pFarA.y);
+      ctx.lineTo(pFarB.x, pFarB.y);
+      ctx.lineTo(pCurveB.x, pCurveB.y);
+      ctx.lineTo(pCurveA.x, pCurveA.y);
       ctx.closePath();
       ctx.fillStyle = `rgba(45, 170, 214, ${0.35 * alpha})`;
       ctx.fill();
@@ -386,8 +392,8 @@ class TideClock {
       const thetaA = TideClock.angleForTime(a.time);
       const thetaB = TideClock.angleForTime(b.time);
 
-      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax);
-      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax);
+      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax, invert);
+      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax, invert);
 
       const pA = { x: cx + rA * Math.sin(thetaA), y: cy - rA * Math.cos(thetaA) };
       const pB = { x: cx + rB * Math.sin(thetaB), y: cy - rB * Math.cos(thetaB) };
@@ -419,10 +425,13 @@ class TideClock {
     return Math.min(1, Math.max(0, n));
   }
 
-  /** Radius from center for a given tide height (10%-90% inward band). */
-  static radiusForHeight(R, h, hMin, hMax) {
+  /** Radius from center for a given tide height (10%-90% inward band).
+   *  When `inverted` is true, the mapping flips: low tide sits near the
+   *  center and high tide sits near the rim (instead of the default where
+   *  low tide is near the rim and high tide is near the center). */
+  static radiusForHeight(R, h, hMin, hMax, inverted = false) {
     const n = TideClock.normalizeHeight(h, hMin, hMax);
-    return 0.9 * R - 0.8 * R * n;
+    return inverted ? 0.1 * R + 0.8 * R * n : 0.9 * R - 0.8 * R * n;
   }
 
   /** Opacity for a given delta-t (hours ahead of now). Always fully visible

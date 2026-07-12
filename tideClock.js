@@ -50,12 +50,21 @@ class TideClock {
     ctx.clearRect(0, 0, W, H);
 
     // Filter to the visible window: now through +12h (never look backward).
-    const visible = samples
-      .map((s) => {
-        const dt = TideClock.hoursBetween(now, s.time);
-        return { ...s, dt };
-      })
-      .filter((s) => s.dt >= 0 && s.dt <= 12);
+    const withDt = samples.map((s) => ({ ...s, dt: TideClock.hoursBetween(now, s.time) }));
+    const visible = withDt.filter((s) => s.dt >= 0 && s.dt <= 12);
+
+    // The 6-minute samples almost never land exactly on dt=0 ("now") or
+    // dt=12 ("now + 12h"), which left tiny unfilled wedges right at the
+    // hour-hand position (looked like a "column"/gap). Fix: splice in
+    // precisely-interpolated boundary points at exactly dt=0 and dt=12,
+    // using the surrounding real samples (which cover a wider range than
+    // just the visible window), so the ring's fill/stroke reach exactly to
+    // both edges - with no gap and no fake connecting line between them
+    // (they're still only adjacent to their own end of the array).
+    const startBoundary = TideClock.interpolateAt(withDt, 0);
+    const endBoundary = TideClock.interpolateAt(withDt, 12);
+    if (startBoundary && (!visible.length || visible[0].dt > 0)) visible.unshift(startBoundary);
+    if (endBoundary && (!visible.length || visible[visible.length - 1].dt < 12)) visible.push(endBoundary);
 
     // Determine height range for normalization (use provided override, or data range).
     const heights = (visible.length ? visible : samples).map((s) => s.height);
@@ -348,6 +357,11 @@ class TideClock {
     // center-ish dead zone (fill grows outward from the middle as tide rises).
     const farBoundaryR = invert ? R * 0.1 : R;
 
+    // `visible` already includes precisely-interpolated boundary points at
+    // dt=0 ("now") and dt=12 ("now + 12h") - see drawFace - so the ring
+    // fill/stroke reach exactly to both edges with no missing sliver and
+    // no fake connecting line between the two ends.
+
     for (let i = 0; i < visible.length - 1; i++) {
       const a = visible[i];
       const b = visible[i + 1];
@@ -435,7 +449,9 @@ class TideClock {
   }
 
   /** Opacity for a given delta-t (hours ahead of now). Always fully visible
-   *  across the whole 12-hour clock face. */
+   *  across the whole 12-hour clock face. The ring's start/end boundaries
+   *  are closed precisely (see drawFace's boundary interpolation), so no
+   *  fade-out is needed here. */
   static opacityForDeltaT(dt) {
     if (dt < 0 || dt > 12) return 0;
     return 1;
@@ -444,6 +460,29 @@ class TideClock {
   /** Hours between two Date objects (b - a), as a decimal. */
   static hoursBetween(a, b) {
     return (b.getTime() - a.getTime()) / (3600 * 1000);
+  }
+
+  /** Given samples with a `.dt` field (hours relative to "now"), linearly
+   *  interpolate the height at an exact target dt (e.g. 0 or 12), using the
+   *  two real samples straddling it. Returns null if there isn't a sample
+   *  on each side to interpolate between. Used to close the tide ring
+   *  precisely at the "now" and "now + 12h" boundaries instead of leaving
+   *  a gap at whatever dt the nearest real sample happens to fall on. */
+  static interpolateAt(withDt, targetDt) {
+    let before = null;
+    let after = null;
+    for (const s of withDt) {
+      if (s.dt <= targetDt && (!before || s.dt > before.dt)) before = s;
+      if (s.dt >= targetDt && (!after || s.dt < after.dt)) after = s;
+    }
+    if (!before || !after) return null;
+    if (before === after) return { time: before.time, height: before.height, dt: targetDt };
+
+    const span = after.dt - before.dt;
+    const frac = span === 0 ? 0 : (targetDt - before.dt) / span;
+    const height = before.height + (after.height - before.height) * frac;
+    const time = new Date(before.time.getTime() + frac * (after.time.getTime() - before.time.getTime()));
+    return { time, height, dt: targetDt };
   }
 
   static formatTime(date) {

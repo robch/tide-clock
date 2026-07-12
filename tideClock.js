@@ -86,6 +86,22 @@ class TideClock {
 
     // --- Draw fixed clock numerals (12, 1 .. 11) + minute ticks ---
     this._drawNumeralsAndTicks(cx, cy, R);
+
+    // --- Draw the trailing "past 6h" and leading "next 6h" tide trace
+    // lines LAST, on top of absolutely everything (ring, markers, ticks,
+    // numerals) so they never get visually merged/muted by anything drawn
+    // underneath. True backward/forward extensions of the tide curve (same
+    // radial height mapping, correct time-of-day angle), just a thinner
+    // line (no fill) in the same blue family as the main curve, fading with
+    // distance since it's context, not "current" data. ---
+    this._drawPastTideLine(cx, cy, R, withDt, hMin, hMax, invert, 6);
+    this._drawFutureTideLine(cx, cy, R, withDt, hMin, hMax, invert, 6);
+
+    // --- Mark local high/low tide points along the dim past/future trace
+    // lines too (same lighter blue family, not the bright yellow used for
+    // the main 12h window), also drawn last/on top. ---
+    this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, -6, 0);
+    this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, 12, 18);
   }
 
   /**
@@ -220,6 +236,77 @@ class TideClock {
     }
   }
 
+  /** Like `_drawHighLowMarkers`, but for the dim past/future trace segments
+   *  (outside the main 12h window). Uses the same faint dark-blue as the
+   *  trace lines (not the bright yellow used for the main window's
+   *  high/low markers) and fades with distance from the main window's edge,
+   *  matching `_drawPastTideLine` / `_drawFutureTideLine`'s fade curve, so
+   *  markers never look "brighter" than the line they sit on.
+   *  `dtLo`/`dtHi` bound the segment (e.g. -6..0 for past, 12..18 for future). */
+  _drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, dtLo, dtHi) {
+    const ctx = this.faceCtx;
+
+    let segment = withDt.filter((s) => s.dt >= dtLo && s.dt <= dtHi);
+    const startBoundary = TideClock.interpolateAt(withDt, dtLo);
+    const endBoundary = TideClock.interpolateAt(withDt, dtHi);
+    if (startBoundary && (!segment.length || segment[0].dt > dtLo)) segment.unshift(startBoundary);
+    if (endBoundary && (!segment.length || segment[segment.length - 1].dt < dtHi)) segment.push(endBoundary);
+
+    if (segment.length < 3) return;
+
+    const isPast = dtHi <= 0; // past segment fades toward dtLo; future fades toward dtHi.
+    const span = dtHi - dtLo;
+    const MAX_ALPHA = 0.85;
+    const color = "rgba(79, 190, 230,"; // same base color as the trace lines.
+
+    const alphaForDt = (dt) => {
+      if (isPast) return MAX_ALPHA * (1 - Math.min(1, Math.max(0, (0 - dt) / span)));
+      return MAX_ALPHA * (1 - Math.min(1, Math.max(0, (dt - 12) / span)));
+    };
+
+    for (let i = 1; i < segment.length - 1; i++) {
+      const prev = segment[i - 1];
+      const cur = segment[i];
+      const next = segment[i + 1];
+
+      const isHigh = cur.height >= prev.height && cur.height >= next.height;
+      const isLow = cur.height <= prev.height && cur.height <= next.height;
+      if (!isHigh && !isLow) continue;
+      if (cur.height === prev.height && cur.height === next.height) continue;
+
+      const alpha = alphaForDt(cur.dt);
+      if (alpha <= 0.02) continue;
+
+      const theta = TideClock.angleForTime(cur.time);
+      const r = TideClock.radiusForHeight(R, cur.height, hMin, hMax, invert);
+      const x = cx + r * Math.sin(theta);
+      const y = cy - r * Math.cos(theta);
+
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      if (isHigh) {
+        ctx.fillStyle = `${color} ${alpha})`;
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(4, 8, 12, 0.65)";
+        ctx.fill();
+        ctx.strokeStyle = `${color} ${alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      const labelR = r + (isHigh ? -14 : 14);
+      const lx = cx + labelR * Math.sin(theta);
+      const ly = cy - labelR * Math.cos(theta);
+
+      ctx.font = "10px sans-serif";
+      ctx.fillStyle = `${color} ${alpha})`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${cur.height.toFixed(1)}${isHigh ? "H" : "L"}`, lx, ly);
+    }
+  }
+
   _drawFace(cx, cy, R) {
     const ctx = this.faceCtx;
 
@@ -346,6 +433,114 @@ class TideClock {
     ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fillStyle = "#ff6b6b";
     ctx.fill();
+  }
+
+  /** Draws the trailing "past" tide line: a true backward extension of the
+   *  main tide curve, using the SAME radial height mapping (`radiusForHeight`,
+   *  honoring `invert`) and time-of-day angle as the forward ring - so it
+   *  reads as one continuous line bending backward from "now", not a
+   *  separate element. Covers the last `hoursBack` hours before "now", with
+   *  no fill (just a stroked line, thinner and darker-blue than the main
+   *  curve), fading from fully transparent at the oldest point up to a
+   *  modest max opacity right at "now".
+   *
+   *  Must be drawn AFTER `_drawTideRing` (the forward ring's fill is a wide
+   *  wedge from the rim to the curve at each angle; drawing the past line
+   *  first would let that fill paint over it even though the past line sits
+   *  at a different radius - different height, but still often inside that
+   *  wedge). Drawing on top guarantees it's always visible. */
+  _drawPastTideLine(cx, cy, R, withDt, hMin, hMax, invert = false, hoursBack = 3) {
+    const ctx = this.faceCtx;
+
+    let past = withDt.filter((s) => s.dt >= -hoursBack && s.dt <= 0);
+
+    const startBoundary = TideClock.interpolateAt(withDt, -hoursBack);
+    const endBoundary = TideClock.interpolateAt(withDt, 0);
+    if (startBoundary && (!past.length || past[0].dt > -hoursBack)) past.unshift(startBoundary);
+    if (endBoundary && (!past.length || past[past.length - 1].dt < 0)) past.push(endBoundary);
+
+    if (past.length < 2) return;
+
+    const MAX_ALPHA = 0.85;
+
+    for (let i = 0; i < past.length - 1; i++) {
+      const a = past[i];
+      const b = past[i + 1];
+
+      // Fade from 0 at dt=-hoursBack to MAX_ALPHA at dt=0.
+      const alphaA = MAX_ALPHA * (1 - Math.min(1, Math.max(0, -a.dt / hoursBack)));
+      const alphaB = MAX_ALPHA * (1 - Math.min(1, Math.max(0, -b.dt / hoursBack)));
+      const alpha = (alphaA + alphaB) / 2;
+      if (alpha <= 0) continue;
+
+      const thetaA = TideClock.angleForTime(a.time);
+      const thetaB = TideClock.angleForTime(b.time);
+
+      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax, invert);
+      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax, invert);
+
+      const pA = { x: cx + rA * Math.sin(thetaA), y: cy - rA * Math.cos(thetaA) };
+      const pB = { x: cx + rB * Math.sin(thetaB), y: cy - rB * Math.cos(thetaB) };
+
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.strokeStyle = `rgba(79, 190, 230, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  /** Draws the leading "future" tide line beyond the main +12h window: a
+   *  forward extension of the tide curve, using the SAME radial height
+   *  mapping and time-of-day angle as the forward ring, covering the
+   *  `hoursForward` hours after +12h (i.e. dt in [12, 12+hoursForward]).
+   *  Same visual style as `_drawPastTideLine` (no fill, darker blue, thinner
+   *  line), but fading the opposite direction: full opacity right at +12h
+   *  (continuing seamlessly from where the main ring ends), fading to
+   *  nothing at the far end. Must be drawn AFTER `_drawTideRing` so it's
+   *  never hidden under the forward ring's fill wedge. */
+  _drawFutureTideLine(cx, cy, R, withDt, hMin, hMax, invert = false, hoursForward = 3) {
+    const ctx = this.faceCtx;
+
+    const endDt = 12 + hoursForward;
+    let future = withDt.filter((s) => s.dt >= 12 && s.dt <= endDt);
+
+    const startBoundary = TideClock.interpolateAt(withDt, 12);
+    const endBoundary = TideClock.interpolateAt(withDt, endDt);
+    if (startBoundary && (!future.length || future[0].dt > 12)) future.unshift(startBoundary);
+    if (endBoundary && (!future.length || future[future.length - 1].dt < endDt)) future.push(endBoundary);
+
+    if (future.length < 2) return;
+
+    const MAX_ALPHA = 0.85;
+
+    for (let i = 0; i < future.length - 1; i++) {
+      const a = future[i];
+      const b = future[i + 1];
+
+      // Fade from MAX_ALPHA at dt=12 to 0 at dt=12+hoursForward.
+      const alphaA = MAX_ALPHA * (1 - Math.min(1, Math.max(0, (a.dt - 12) / hoursForward)));
+      const alphaB = MAX_ALPHA * (1 - Math.min(1, Math.max(0, (b.dt - 12) / hoursForward)));
+      const alpha = (alphaA + alphaB) / 2;
+      if (alpha <= 0) continue;
+
+      const thetaA = TideClock.angleForTime(a.time);
+      const thetaB = TideClock.angleForTime(b.time);
+
+      const rA = TideClock.radiusForHeight(R, a.height, hMin, hMax, invert);
+      const rB = TideClock.radiusForHeight(R, b.height, hMin, hMax, invert);
+
+      const pA = { x: cx + rA * Math.sin(thetaA), y: cy - rA * Math.cos(thetaA) };
+      const pB = { x: cx + rB * Math.sin(thetaB), y: cy - rB * Math.cos(thetaB) };
+
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.strokeStyle = `rgba(79, 190, 230, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
   }
 
   _drawTideRing(cx, cy, R, visible, hMin, hMax, invert = false) {

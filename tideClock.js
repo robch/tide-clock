@@ -257,7 +257,7 @@ class TideClock {
     const isPast = dtHi <= 0; // past segment fades toward dtLo; future fades toward dtHi.
     const span = dtHi - dtLo;
     const MAX_ALPHA = 0.85;
-    const color = "rgba(79, 190, 230,"; // same base color as the trace lines.
+    const color = "rgba(150, 150, 155,"; // same base color as the trace lines.
 
     const alphaForDt = (dt) => {
       if (isPast) return MAX_ALPHA * (1 - Math.min(1, Math.max(0, (0 - dt) / span)));
@@ -485,7 +485,7 @@ class TideClock {
       ctx.beginPath();
       ctx.moveTo(pA.x, pA.y);
       ctx.lineTo(pB.x, pB.y);
-      ctx.strokeStyle = `rgba(79, 190, 230, ${alpha})`;
+      ctx.strokeStyle = `rgba(150, 150, 155, ${alpha})`;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -537,7 +537,7 @@ class TideClock {
       ctx.beginPath();
       ctx.moveTo(pA.x, pA.y);
       ctx.lineTo(pB.x, pB.y);
-      ctx.strokeStyle = `rgba(79, 190, 230, ${alpha})`;
+      ctx.strokeStyle = `rgba(150, 150, 155, ${alpha})`;
       ctx.lineWidth = 2;
       ctx.stroke();
     }

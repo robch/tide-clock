@@ -403,7 +403,7 @@ class TideClock {
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + minLen * Math.sin(minuteTheta), cy - minLen * Math.cos(minuteTheta));
-    ctx.strokeStyle = "#e05252";
+    ctx.strokeStyle = "#e8f1f5";
     ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.stroke();

@@ -46,14 +46,21 @@ const tapMenu = document.getElementById("tapMenu");
 const useLocationBtn = document.getElementById("useLocationBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
 const particleModeSelect = document.getElementById("particleMode");
-const showHourHandCheckbox = document.getElementById("showHourHand");
-const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
-const showSecondHandCheckbox = document.getElementById("showSecondHand");
+// Clock hand checkboxes removed from UI but references kept for code preservation
+const showHourHandCheckbox = null;
+const showMinuteHandCheckbox = null;
+const showSecondHandCheckbox = null;
 const showDateTimeCheckbox = document.getElementById("showDateTime");
 const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
 const tideHeightDisplayEl = document.getElementById("tideHeightDisplay");
 const tidePredictionsHighEl = document.getElementById("tidePredictionsHigh");
 const tidePredictionsLowEl = document.getElementById("tidePredictionsLow");
+const backwardBtn = document.getElementById("backwardBtn");
+const forwardBtn = document.getElementById("forwardBtn");
+const nowBtn = document.getElementById("nowBtn");
+const rewindBtn = document.getElementById("rewindBtn");
+const pauseResetBtn = document.getElementById("pauseResetBtn");
+const fastForwardBtn = document.getElementById("fastForwardBtn");
 
 let redrawTimer = null;
 let currentSamples = null;
@@ -68,10 +75,10 @@ let heldKeys = {}; // Track which keys are being held
 // Restore the "flip tide direction" preference from localStorage.
 invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
 
-// Restore the clock hand visibility preferences from localStorage.
-showHourHandCheckbox.checked = localStorage.getItem("showHourHand") !== "false"; // default true
-showMinuteHandCheckbox.checked = localStorage.getItem("showMinuteHand") !== "false"; // default true
-showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "true"; // default false
+// Clock hand visibility hardcoded to false (hidden from UI, code preserved)
+const showHourHand = false;
+const showMinuteHand = false;
+const showSecondHand = false;
 
 // Restore date/time display preference from localStorage.
 showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
@@ -163,6 +170,29 @@ function updateDateTimeDisplayText() {
     
     // Update next high/low tide predictions
     updateTidePredictions(now);
+  }
+  
+  // Update pause/reset button state
+  updatePauseResetButton();
+}
+
+// Update the middle transport button based on state
+function updatePauseResetButton() {
+  const atCurrentTime = (simulatedTime === null);
+  const isMoving = (Math.abs(timeMultiplier) > 1.0);
+  
+  if (atCurrentTime) {
+    // At current time - button is disabled and shows reset icon
+    pauseResetBtn.textContent = "↻";
+    pauseResetBtn.disabled = true;
+  } else if (isMoving) {
+    // Not at current time and moving - show pause
+    pauseResetBtn.textContent = "❚❚";
+    pauseResetBtn.disabled = false;
+  } else {
+    // Not at current time but paused - show reset
+    pauseResetBtn.textContent = "↻";
+    pauseResetBtn.disabled = false;
   }
 }
 
@@ -256,17 +286,18 @@ particleModeSelect.addEventListener("change", () => {
 particleField.setMode(currentParticleMode);
 particleField.start();
 
-// Function to update second hand checkbox state based on hour/minute hand visibility
+// Function to update second hand checkbox state based on hour/minute hand visibility (preserved but unused)
 function updateSecondHandCheckboxState() {
-  const canShowSecondHand = showHourHandCheckbox.checked && showMinuteHandCheckbox.checked;
-  showSecondHandCheckbox.disabled = !canShowSecondHand;
-  if (!canShowSecondHand && showSecondHandCheckbox.checked) {
-    showSecondHandCheckbox.checked = false;
-    localStorage.setItem("showSecondHand", "false");
-  }
+  // Disabled - hands are now hardcoded to false
+  // const canShowSecondHand = showHourHandCheckbox.checked && showMinuteHandCheckbox.checked;
+  // showSecondHandCheckbox.disabled = !canShowSecondHand;
+  // if (!canShowSecondHand && showSecondHandCheckbox.checked) {
+  //   showSecondHandCheckbox.checked = false;
+  //   localStorage.setItem("showSecondHand", "false");
+  // }
 }
 
-// Initial state update
+// Initial state update (now a no-op)
 updateSecondHandCheckboxState();
 
 // Restore intensity preference (0.25 .. 3.0, default 1.0).
@@ -478,8 +509,8 @@ function renderFace() {
   const opts = {
     ...currentHeightRange,
     invertTide: invertTideCheckbox.checked,
-    showHourHand: showHourHandCheckbox.checked,
-    showMinuteHand: showMinuteHandCheckbox.checked,
+    showHourHand: showHourHand,
+    showMinuteHand: showMinuteHand,
   };
   tideClock.drawFace(currentSamples, now, opts);
 
@@ -500,9 +531,9 @@ function renderFace() {
 
 function renderHands() {
   const opts = {
-    showHourHand: showHourHandCheckbox.checked,
-    showMinuteHand: showMinuteHandCheckbox.checked,
-    showSecondHand: showSecondHandCheckbox.checked,
+    showHourHand: showHourHand,
+    showMinuteHand: showMinuteHand,
+    showSecondHand: showSecondHand,
   };
   tideClock.drawHands(getCurrentTime(), opts);
 }
@@ -544,24 +575,25 @@ invertTideCheckbox.addEventListener("change", () => {
   renderFace();
 });
 
-showHourHandCheckbox.addEventListener("change", () => {
-  localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
-  updateSecondHandCheckboxState();
-  renderFace(); // Re-render face to update gridline label position
-  renderHands();
-});
-
-showMinuteHandCheckbox.addEventListener("change", () => {
-  localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
-  updateSecondHandCheckboxState();
-  renderFace(); // Re-render face to update gridline label position
-  renderHands();
-});
-
-showSecondHandCheckbox.addEventListener("change", () => {
-  localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
-  renderHands();
-});
+// Clock hand event listeners removed (hands hardcoded to false, code preserved)
+// showHourHandCheckbox.addEventListener("change", () => {
+//   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
+//   updateSecondHandCheckboxState();
+//   renderFace(); // Re-render face to update gridline label position
+//   renderHands();
+// });
+// 
+// showMinuteHandCheckbox.addEventListener("change", () => {
+//   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
+//   updateSecondHandCheckboxState();
+//   renderFace(); // Re-render face to update gridline label position
+//   renderHands();
+// });
+// 
+// showSecondHandCheckbox.addEventListener("change", () => {
+//   localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
+//   renderHands();
+// });
 
 showDateTimeCheckbox.addEventListener("change", () => {
   localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);
@@ -669,9 +701,16 @@ fullscreenBtn.addEventListener("click", (e) => {
 });
 
 // Clicking anywhere on the app (but not on the menu or settings panel
-// itself) toggles the floating "Settings" / "Full Screen" tap menu.
+// itself) toggles the floating tap menu and stops time acceleration when opening.
 appEl.addEventListener("click", (e) => {
   if (settingsPanel.contains(e.target) || tapMenu.contains(e.target)) return;
+  
+  // Only stop acceleration when OPENING the menu (not closing it)
+  const isOpening = tapMenu.classList.contains("hidden");
+  if (isOpening) {
+    timeMultiplier = 1.0;
+  }
+  
   tapMenu.classList.toggle("hidden");
 });
 
@@ -779,6 +818,112 @@ function updateTimeSimulation() {
 
 // Start the continuous update loop
 updateTimeSimulation();
+
+
+// Time control buttons - work exactly like arrow keys
+backwardBtn.addEventListener("mousedown", () => {
+  heldKeys["ArrowLeft"] = true;
+});
+backwardBtn.addEventListener("mouseup", () => {
+  delete heldKeys["ArrowLeft"];
+});
+backwardBtn.addEventListener("mouseleave", () => {
+  delete heldKeys["ArrowLeft"];
+});
+
+forwardBtn.addEventListener("mousedown", () => {
+  heldKeys["ArrowRight"] = true;
+});
+forwardBtn.addEventListener("mouseup", () => {
+  delete heldKeys["ArrowRight"];
+});
+forwardBtn.addEventListener("mouseleave", () => {
+  delete heldKeys["ArrowRight"];
+});
+
+// Touch events for mobile
+backwardBtn.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  heldKeys["ArrowLeft"] = true;
+});
+backwardBtn.addEventListener("touchend", () => {
+  delete heldKeys["ArrowLeft"];
+});
+
+forwardBtn.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  heldKeys["ArrowRight"] = true;
+});
+forwardBtn.addEventListener("touchend", () => {
+  delete heldKeys["ArrowRight"];
+});
+
+// "Now" button - resets to current time and 1x speed
+nowBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  simulatedTime = null;
+  timeMultiplier = 1.0;
+  lastUpdateTime = Date.now();
+  renderFace();
+  renderHands();
+  tapMenu.classList.add("hidden");
+});
+
+// Permanent transport controls
+rewindBtn.addEventListener("mousedown", () => {
+  heldKeys["ArrowLeft"] = true;
+});
+rewindBtn.addEventListener("mouseup", () => {
+  delete heldKeys["ArrowLeft"];
+});
+rewindBtn.addEventListener("mouseleave", () => {
+  delete heldKeys["ArrowLeft"];
+});
+
+fastForwardBtn.addEventListener("mousedown", () => {
+  heldKeys["ArrowRight"] = true;
+});
+fastForwardBtn.addEventListener("mouseup", () => {
+  delete heldKeys["ArrowRight"];
+});
+fastForwardBtn.addEventListener("mouseleave", () => {
+  delete heldKeys["ArrowRight"];
+});
+
+pauseResetBtn.addEventListener("click", () => {
+  const atCurrentTime = (simulatedTime === null);
+  const isMoving = (Math.abs(timeMultiplier) > 1.0);
+  
+  if (isMoving) {
+    // Pause - return to 1x
+    timeMultiplier = 1.0;
+  } else if (!atCurrentTime) {
+    // Reset - return to current time
+    simulatedTime = null;
+    timeMultiplier = 1.0;
+    lastUpdateTime = Date.now();
+    renderFace();
+    renderHands();
+  }
+});
+
+// Touch events for mobile
+rewindBtn.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  heldKeys["ArrowLeft"] = true;
+});
+rewindBtn.addEventListener("touchend", () => {
+  delete heldKeys["ArrowLeft"];
+});
+
+fastForwardBtn.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  heldKeys["ArrowRight"] = true;
+});
+fastForwardBtn.addEventListener("touchend", () => {
+  delete heldKeys["ArrowRight"];
+});
+
 
 // Initial load.
 loadTides();

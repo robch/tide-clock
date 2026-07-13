@@ -11,6 +11,13 @@
 
   <div id="modeLabel" class="mode-label"></div>
   <div id="tidePredictionsHigh" class="tide-predictions"></div>
+  
+  <div id="transportControls" class="permanent-transport">
+    <button id="rewindBtn" class="transport-control-btn">◀</button>
+    <button id="pauseResetBtn" class="transport-control-btn">↻</button>
+    <button id="fastForwardBtn" class="transport-control-btn">▶</button>
+  </div>
+  
   <div id="dateTimeDisplay" class="datetime-display"></div>
   <div id="tidePredictionsLow" class="tide-predictions-low"></div>
 
@@ -25,6 +32,11 @@
     <div id="tapMenu" class="tap-menu hidden">
       <button id="settingsBtn" class="tap-menu-btn">Settings</button>
       <button id="fullscreenBtn" class="tap-menu-btn">Full Screen</button>
+      <div class="transport-controls">
+        <button id="backwardBtn" class="transport-btn">←</button>
+        <button id="nowBtn" class="transport-btn">Now</button>
+        <button id="forwardBtn" class="transport-btn">→</button>
+      </div>
     </div>
 
     <div id="settingsPanel" class="settings-panel hidden">
@@ -38,6 +50,7 @@
           <input id="invertTide" type="checkbox" style="width: auto;" />
           Flip tide direction (fill from center outward)
         </label>
+        <!-- Clock hand visibility controls hidden but code preserved
         <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="showHourHand" type="checkbox" style="width: auto;" checked />
           Show hour hand
@@ -50,6 +63,7 @@
           <input id="showSecondHand" type="checkbox" style="width: auto;" />
           Show second hand
         </label>
+        -->
         <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="showDateTime" type="checkbox" style="width: auto;" checked />
           Show date/time

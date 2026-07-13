@@ -44,6 +44,34 @@ body {
   text-align: center;
 }
 
+.settings-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 50;
+  background: rgba(14, 27, 36, 0.85);
+  border: 1px solid #2aa9d6;
+  color: #e8f1f5;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.15s ease;
+  min-width: 48px;
+  text-align: center;
+}
+
+.settings-btn:hover {
+  background: rgba(42, 169, 214, 0.35);
+}
+
+.settings-btn:active {
+  background: rgba(42, 169, 214, 0.55);
+}
+
 .datetime-display {
   position: fixed;
   bottom: 80px;

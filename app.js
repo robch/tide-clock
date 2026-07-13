@@ -38,6 +38,7 @@ const stationNameEl = document.getElementById("stationName");
 const loadBtn = document.getElementById("loadBtn");
 const statusEl = document.getElementById("status");
 const settingsPanel = document.getElementById("settingsPanel");
+const settingsBtn = document.getElementById("settingsBtn");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 const appEl = document.getElementById("app");
 const useLocationBtn = document.getElementById("useLocationBtn");
@@ -595,6 +596,11 @@ invertTideCheckbox.addEventListener("change", () => {
 showDateTimeCheckbox.addEventListener("change", () => {
   localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);
   updateDateTimeDisplay();
+});
+
+settingsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  settingsPanel.classList.remove("hidden");
 });
 
 closeSettingsBtn.addEventListener("click", () => {

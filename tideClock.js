@@ -37,6 +37,8 @@ class TideClock {
    * @param {Object} [opts]
    * @param {number} [opts.hMin] - override min height for normalization
    * @param {number} [opts.hMax] - override max height for normalization
+   * @param {boolean} [opts.showHourHand] - whether hour hand will be shown
+   * @param {boolean} [opts.showMinuteHand] - whether minute hand will be shown
    */
   drawFace(samples, now, opts = {}) {
     const ctx = this.faceCtx;
@@ -75,8 +77,13 @@ class TideClock {
     // --- Draw base clock face (outer rim + inner dead-zone guide) ---
     this._drawFace(cx, cy, R);
 
+    // Determine label offset for gridlines: if hands are visible, offset ~18 degrees
+    // so hands don't overlap labels; if hands are hidden, put labels at 0 degrees (right at "now").
+    const showingHands = (opts.showHourHand !== false || opts.showMinuteHand !== false);
+    const labelOffset = showingHands ? (18 * Math.PI) / 180 : 0;
+
     // --- Draw foot gridlines (concentric rings) so tide height is readable ---
-    this._drawFtGridlines(cx, cy, R, hMin, hMax, now, invert);
+    this._drawFtGridlines(cx, cy, R, hMin, hMax, now, invert, labelOffset);
 
     // --- Draw the continuous tide curve as a filled ring, fixed to time-of-day ---
     this._drawTideRing(cx, cy, R, visible, hMin, hMax, invert);
@@ -102,6 +109,11 @@ class TideClock {
     // the main 12h window), also drawn last/on top. ---
     this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, -6, 0);
     this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, 12, 18);
+
+    // --- Draw the "now" indicator hand last (on top of everything) when clock hands are hidden ---
+    if (!showingHands) {
+      this._drawNowIndicator(cx, cy, R, now, visible, hMin, hMax, invert);
+    }
   }
 
   /**
@@ -110,8 +122,12 @@ class TideClock {
    * for a smoothly ticking clock without redrawing the whole tide ring.
    *
    * @param {Date} now
+   * @param {Object} [opts]
+   * @param {boolean} [opts.showHourHand] - whether to draw the hour hand
+   * @param {boolean} [opts.showMinuteHand] - whether to draw the minute hand
+   * @param {boolean} [opts.showSecondHand] - whether to draw the second hand
    */
-  drawHands(now) {
+  drawHands(now, opts = {}) {
     const ctx = this.handsCtx;
     const canvas = this.handsCanvas;
     const W = canvas.width;
@@ -121,15 +137,15 @@ class TideClock {
     const R = Math.min(W, H) * 0.38;
 
     ctx.clearRect(0, 0, W, H);
-    this._drawHands(cx, cy, R, now);
+    this._drawHands(cx, cy, R, now, opts);
   }
 
 
   /** Draws concentric "ft" gridlines every 2 ft between hMin and hMax, using
-   *  the same radial mapping as the tide ring, with small labels placed just
-   *  clockwise of the current-time position (near "now" but offset so the
-   *  hour/minute/second hands don't sit on top of the labels). */
-  _drawFtGridlines(cx, cy, R, hMin, hMax, now, invert = false) {
+   *  the same radial mapping as the tide ring, with small labels placed at an
+   *  offset from the current-time position. If clock hands are visible, offset
+   *  clockwise so hands don't overlap labels; if hidden, place at 0 offset. */
+  _drawFtGridlines(cx, cy, R, hMin, hMax, now, invert = false, labelOffset = 0) {
     const ctx = this.faceCtx;
 
     const step = 2;
@@ -137,10 +153,8 @@ class TideClock {
     const start = Math.ceil(hMin / step - EPS) * step;
     const end = Math.floor(hMax / step + EPS) * step;
 
-    // Offset labels ~18 degrees clockwise from "now" so the hands (which
-    // point exactly at "now") never overlap the labels.
+    // Use the provided labelOffset (0 if hands are hidden, ~18 degrees if hands are visible).
     const nowTheta = TideClock.angleForTime(now);
-    const labelOffset = (18 * Math.PI) / 180;
     const labelTheta = nowTheta + labelOffset;
 
     for (let ft = start; ft <= end + EPS; ft += step) {
@@ -148,12 +162,14 @@ class TideClock {
 
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(200, 230, 240, 0.22)";
-      ctx.setLineDash([3, 5]);
+      ctx.strokeStyle = "rgba(200, 230, 240, 0.12)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.setLineDash([]);
-
+    }
+    
+    // Draw labels
+    for (let ft = start; ft <= end + EPS; ft += step) {
+      const r = TideClock.radiusForHeight(R, ft, hMin, hMax, invert);
       const x = cx + r * Math.sin(labelTheta);
       const y = cy - r * Math.cos(labelTheta);
 
@@ -171,6 +187,97 @@ class TideClock {
       ctx.fillText(text, x, y);
     }
   }
+
+  /** Draws a wide hand-like "now" indicator when clock hands are hidden, showing
+   *  the current time position with a hollow white stroke from center to edge. */
+  _drawNowIndicator(cx, cy, R, now, visible, hMin, hMax, invert) {
+    const ctx = this.faceCtx;
+    const nowTheta = TideClock.angleForTime(now);
+    
+    const outerWidth = 36;
+    const innerWidth = 24;
+    const borderWidth = 6; // (36 - 24) / 2
+    
+    // Calculate arc radius (used for shortening the rails)
+    const arcRadius = outerWidth / 2 - borderWidth / 2;
+    
+    // Shorten the rails by the arc radius
+    const handLen = R - arcRadius;
+    
+    // Calculate the perpendicular direction (90 degrees from the hand direction)
+    const perpX = -Math.cos(nowTheta);
+    const perpY = -Math.sin(nowTheta);
+    
+    const endX = cx + handLen * Math.sin(nowTheta);
+    const endY = cy - handLen * Math.cos(nowTheta);
+    
+    // Draw left rail - just a rectangle from center extending outward
+    const leftInnerOffset = innerWidth / 2;
+    const leftOuterOffset = outerWidth / 2;
+    
+    ctx.beginPath();
+    ctx.moveTo(cx + perpX * leftInnerOffset, cy + perpY * leftInnerOffset);
+    ctx.lineTo(endX + perpX * leftInnerOffset, endY + perpY * leftInnerOffset);
+    ctx.lineTo(endX + perpX * leftOuterOffset, endY + perpY * leftOuterOffset);
+    ctx.lineTo(cx + perpX * leftOuterOffset, cy + perpY * leftOuterOffset);
+    ctx.closePath();
+    ctx.fillStyle = "#e8f1f5";
+    ctx.fill();
+    
+    // Draw right rail
+    ctx.beginPath();
+    ctx.moveTo(cx - perpX * leftInnerOffset, cy - perpY * leftInnerOffset);
+    ctx.lineTo(endX - perpX * leftInnerOffset, endY - perpY * leftInnerOffset);
+    ctx.lineTo(endX - perpX * leftOuterOffset, endY - perpY * leftOuterOffset);
+    ctx.lineTo(cx - perpX * leftOuterOffset, cy - perpY * leftOuterOffset);
+    ctx.closePath();
+    ctx.fillStyle = "#e8f1f5";
+    ctx.fill();
+    
+    // Draw arc connecting the outer ends of the two rails (just the curved line, not filled)
+    ctx.beginPath();
+    // Rotate 90 degrees clockwise: add PI/2 to both angles
+    const startAngle = nowTheta + Math.PI;
+    const endAngle = nowTheta;
+    // Reduce radius by half the stroke width so it connects to the rails properly
+    ctx.arc(endX, endY, arcRadius, startAngle, endAngle, false);
+    ctx.strokeStyle = "#e8f1f5";
+    ctx.lineWidth = borderWidth;
+    ctx.stroke();
+    
+    // Draw arc at the center (inner end), rotated 180 degrees from the outer arc
+    ctx.beginPath();
+    const centerStartAngle = nowTheta;
+    const centerEndAngle = nowTheta + Math.PI;
+    const centerArcRadius = innerWidth / 2 + borderWidth * 0.5;
+    ctx.arc(cx, cy, centerArcRadius, centerStartAngle, centerEndAngle, false);
+    ctx.strokeStyle = "#e8f1f5";
+    ctx.lineWidth = borderWidth;
+    ctx.stroke();
+    
+    // Find the current tide height at "now" and draw a circle at that point
+    if (visible && visible.length > 0) {
+      // Find the sample closest to "now" (dt closest to 0)
+      const nowSample = visible.reduce((closest, s) => {
+        return Math.abs(s.dt) < Math.abs(closest.dt) ? s : closest;
+      });
+      
+      // Calculate the radius for the current tide height
+      const tideRadius = TideClock.radiusForHeight(R, nowSample.height, hMin, hMax, invert);
+      
+      // Position the circle along the "now" angle at the tide height radius
+      const tideX = cx + tideRadius * Math.sin(nowTheta);
+      const tideY = cy - tideRadius * Math.cos(nowTheta);
+      
+      // Draw filled circle (blue, matching the tide line color)
+      const innerCircleRadius = 5; // Same size as low tide marker
+      ctx.beginPath();
+      ctx.arc(tideX, tideY, innerCircleRadius, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(79, 214, 255, 1)"; // Same as the tide curve line color
+      ctx.fill();
+    }
+  }
+
 
   /** Finds local high/low tide extrema within the visible samples and draws
    *  a marker dot (plus small height label) at each one. */
@@ -377,8 +484,14 @@ class TideClock {
   }
 
   /** Draws real analog hour + minute + second hands pointing at "now". */
-  _drawHands(cx, cy, R, now) {
+  _drawHands(cx, cy, R, now, opts = {}) {
     const ctx = this.handsCtx;
+
+    // Default all hands to visible unless explicitly disabled
+    const showHourHand = opts.showHourHand !== false;
+    const showMinuteHand = opts.showMinuteHand !== false;
+    // Second hand can only show if both hour and minute hands are shown
+    const showSecondHand = opts.showSecondHand === true && showHourHand && showMinuteHand;
 
     const seconds = now.getSeconds() + now.getMilliseconds() / 1000;
     const minutes = now.getMinutes() + seconds / 60;
@@ -389,50 +502,58 @@ class TideClock {
     const secondTheta = (2 * Math.PI * seconds) / 60;
 
     // Hour hand.
-    const hourLen = R * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + hourLen * Math.sin(hourTheta), cy - hourLen * Math.cos(hourTheta));
-    ctx.strokeStyle = "#e8f1f5";
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
-    ctx.stroke();
+    if (showHourHand) {
+      const hourLen = R * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + hourLen * Math.sin(hourTheta), cy - hourLen * Math.cos(hourTheta));
+      ctx.strokeStyle = "#e8f1f5";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
 
     // Minute hand.
-    const minLen = R * 0.75;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + minLen * Math.sin(minuteTheta), cy - minLen * Math.cos(minuteTheta));
-    ctx.strokeStyle = "#e8f1f5";
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.stroke();
+    if (showMinuteHand) {
+      const minLen = R * 0.75;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + minLen * Math.sin(minuteTheta), cy - minLen * Math.cos(minuteTheta));
+      ctx.strokeStyle = "#e8f1f5";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
 
     // Second hand (thin, with a small tail past center like a real clock).
-    const secLen = R * 0.85;
-    const secTailLen = R * 0.12;
-    ctx.beginPath();
-    ctx.moveTo(cx - secTailLen * Math.sin(secondTheta), cy + secTailLen * Math.cos(secondTheta));
-    ctx.lineTo(cx + secLen * Math.sin(secondTheta), cy - secLen * Math.cos(secondTheta));
-    ctx.strokeStyle = "#ff6b6b";
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = "round";
-    ctx.stroke();
+    if (showSecondHand) {
+      const secLen = R * 0.85;
+      const secTailLen = R * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(cx - secTailLen * Math.sin(secondTheta), cy + secTailLen * Math.cos(secondTheta));
+      ctx.lineTo(cx + secLen * Math.sin(secondTheta), cy - secLen * Math.cos(secondTheta));
+      ctx.strokeStyle = "#ff6b6b";
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
 
-    // Center pivot.
-    ctx.beginPath();
-    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = "#e05252";
-    ctx.fill();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    // Center pivot (only draw if at least one hand is showing).
+    if (showHourHand || showMinuteHand || showSecondHand) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#e05252";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-    // Small red center dot on top (classic second-hand pivot look).
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = "#ff6b6b";
-    ctx.fill();
+      // Small red center dot on top (classic second-hand pivot look).
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff6b6b";
+      ctx.fill();
+    }
   }
 
   /** Draws the trailing "past" tide line: a true backward extension of the

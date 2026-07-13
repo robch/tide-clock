@@ -10,6 +10,7 @@
   <canvas id="particleCanvas"></canvas>
 
   <div id="modeLabel" class="mode-label"></div>
+  <div id="dateTimeDisplay" class="datetime-display"></div>
 
   <div class="app" id="app">
     <div class="clock-wrap">
@@ -34,6 +35,22 @@
         <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="invertTide" type="checkbox" style="width: auto;" />
           Flip tide direction (fill from center outward)
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showHourHand" type="checkbox" style="width: auto;" checked />
+          Show hour hand
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showMinuteHand" type="checkbox" style="width: auto;" checked />
+          Show minute hand
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showSecondHand" type="checkbox" style="width: auto;" />
+          Show second hand
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showDateTime" type="checkbox" style="width: auto;" checked />
+          Show date/time
         </label>
         <label>
           Background Animation

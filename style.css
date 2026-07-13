@@ -42,6 +42,27 @@ body {
   transition: opacity 1.2s ease;
 }
 
+.datetime-display {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  color: #cfe8f2;
+  text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
+  pointer-events: none;
+  text-align: center;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.datetime-display.hidden {
+  opacity: 0;
+}
+
+
 .app {
   position: relative;
   z-index: 10;

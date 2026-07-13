@@ -46,13 +46,79 @@ const tapMenu = document.getElementById("tapMenu");
 const useLocationBtn = document.getElementById("useLocationBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
 const particleModeSelect = document.getElementById("particleMode");
+const showHourHandCheckbox = document.getElementById("showHourHand");
+const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
+const showSecondHandCheckbox = document.getElementById("showSecondHand");
+const showDateTimeCheckbox = document.getElementById("showDateTime");
+const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
 
 let redrawTimer = null;
 let currentSamples = null;
 let currentHeightRange = { hMin: -2, hMax: 10 };
 
+// Time simulation state
+let simulatedTime = null; // null = use real time, Date object = simulated time
+let timeMultiplier = 1.0; // -86400.0 to +86400.0 (negative = reverse, positive = forward, 86400 = 24hr/sec)
+let lastUpdateTime = Date.now();
+let heldKeys = {}; // Track which keys are being held
+
 // Restore the "flip tide direction" preference from localStorage.
 invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
+
+// Restore the clock hand visibility preferences from localStorage.
+showHourHandCheckbox.checked = localStorage.getItem("showHourHand") !== "false"; // default true
+showMinuteHandCheckbox.checked = localStorage.getItem("showMinuteHand") !== "false"; // default true
+showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "true"; // default false
+
+// Restore date/time display preference from localStorage.
+showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
+
+// Restore date/time display preference from localStorage.
+showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
+
+// Update date/time display visibility
+function updateDateTimeDisplay() {
+  if (showDateTimeCheckbox.checked) {
+    dateTimeDisplayEl.classList.remove("hidden");
+  } else {
+    dateTimeDisplayEl.classList.add("hidden");
+  }
+}
+updateDateTimeDisplay();
+
+// Get current time (either real or simulated)
+function getCurrentTime() {
+  return simulatedTime || new Date();
+}
+
+// Format date/time for display
+function formatDateTime(date) {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  
+  const dayName = days[date.getDay()];
+  const monthName = months[date.getMonth()];
+  const day = date.getDate();
+  const year = date.getFullYear();
+  
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  
+  return `${dayName}, ${monthName} ${day}, ${year}\n${hours}:${mm}:${ss} ${ampm}`;
+}
+
+// Update the date/time display element
+function updateDateTimeDisplayText() {
+  const now = getCurrentTime();
+  dateTimeDisplayEl.textContent = formatDateTime(now);
+}
 
 // Restore the background animation preference from localStorage.
 let currentParticleMode = localStorage.getItem("particleMode") || "none";
@@ -95,6 +161,19 @@ particleModeSelect.addEventListener("change", () => {
 
 particleField.setMode(currentParticleMode);
 particleField.start();
+
+// Function to update second hand checkbox state based on hour/minute hand visibility
+function updateSecondHandCheckboxState() {
+  const canShowSecondHand = showHourHandCheckbox.checked && showMinuteHandCheckbox.checked;
+  showSecondHandCheckbox.disabled = !canShowSecondHand;
+  if (!canShowSecondHand && showSecondHandCheckbox.checked) {
+    showSecondHandCheckbox.checked = false;
+    localStorage.setItem("showSecondHand", "false");
+  }
+}
+
+// Initial state update
+updateSecondHandCheckboxState();
 
 // Restore intensity preference (0.25 .. 3.0, default 1.0).
 let currentIntensity = parseFloat(localStorage.getItem("particleIntensity")) || 1.0;
@@ -230,17 +309,21 @@ async function useMyLocation() {
 
 /**
  * Fetch dense (6-minute interval) tide height predictions covering
- * yesterday 12:00 through tomorrow 12:00 (comfortably covers any
- * "now .. now + 11h" window regardless of when you load the page).
+ * the past 14 days through the next 14 days (28 days total). This gives
+ * plenty of data for time-travel both forward and backward at accelerated
+ * speeds - at ±86400x speed (24hr/sec), 14 days in either direction = 
+ * ~14 seconds of real time to explore.
  * Tries the MLLW datum first (matches NOAA tide tables); falls back to
  * STND for stations that don't publish MLLW.
  */
 async function fetchTidePredictions(stationId) {
   const today = new Date();
   const begin = new Date(today);
-  begin.setDate(begin.getDate() - 1);
+  begin.setDate(begin.getDate() - 14); // Fetch 14 days back
+  begin.setHours(0, 0, 0, 0);
   const end = new Date(today);
-  end.setDate(end.getDate() + 1);
+  end.setDate(end.getDate() + 14); // Fetch 14 days ahead
+  end.setHours(23, 59, 59, 999);
 
   const fmt = (d) =>
     `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
@@ -297,8 +380,13 @@ function setStatus(text, isError = false) {
 
 function renderFace() {
   if (!currentSamples) return;
-  const now = new Date();
-  const opts = { ...currentHeightRange, invertTide: invertTideCheckbox.checked };
+  const now = getCurrentTime();
+  const opts = {
+    ...currentHeightRange,
+    invertTide: invertTideCheckbox.checked,
+    showHourHand: showHourHandCheckbox.checked,
+    showMinuteHand: showMinuteHandCheckbox.checked,
+  };
   tideClock.drawFace(currentSamples, now, opts);
 
   // Feed current tide height (normalized) + trend into the particle field
@@ -317,7 +405,12 @@ function renderFace() {
 }
 
 function renderHands() {
-  tideClock.drawHands(new Date());
+  const opts = {
+    showHourHand: showHourHandCheckbox.checked,
+    showMinuteHand: showMinuteHandCheckbox.checked,
+    showSecondHand: showSecondHandCheckbox.checked,
+  };
+  tideClock.drawHands(getCurrentTime(), opts);
 }
 
 async function loadTides() {
@@ -357,6 +450,30 @@ invertTideCheckbox.addEventListener("change", () => {
   renderFace();
 });
 
+showHourHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
+  updateSecondHandCheckboxState();
+  renderFace(); // Re-render face to update gridline label position
+  renderHands();
+});
+
+showMinuteHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
+  updateSecondHandCheckboxState();
+  renderFace(); // Re-render face to update gridline label position
+  renderHands();
+});
+
+showSecondHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
+  renderHands();
+});
+
+showDateTimeCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);
+  updateDateTimeDisplay();
+});
+
 settingsBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   tapMenu.classList.add("hidden");
@@ -378,6 +495,9 @@ settingsPanel.addEventListener("click", (e) => {
 // 'f' toggles full screen and 's' opens settings, both from anywhere on the
 // main screen (but not while typing into an input field).
 document.addEventListener("keydown", (e) => {
+  // Track held keys for continuous acceleration/deceleration
+  heldKeys[e.key] = true;
+
   if (e.key === "Escape") {
     if (!settingsPanel.classList.contains("hidden")) {
       settingsPanel.classList.add("hidden");
@@ -405,6 +525,19 @@ document.addEventListener("keydown", (e) => {
     settingsPanel.classList.remove("hidden");
   } else if (e.key === " " || e.key === "Spacebar") {
     e.preventDefault();
+    // Space: if at real-time (1x), jump to current time; otherwise just reset speed to 1x
+    if (timeMultiplier === 1.0 && simulatedTime !== null) {
+      // Already at 1x but in simulated time - jump to current time
+      simulatedTime = null;
+      lastUpdateTime = Date.now();
+      renderFace();
+      renderHands();
+    } else {
+      // Not at 1x - just stop acceleration/deceleration and go to real-time
+      timeMultiplier = 1.0;
+    }
+  } else if (e.key === "m" || e.key === "M") {
+    // M key: flip tide view (toggle invert mode)
     invertTideCheckbox.checked = !invertTideCheckbox.checked;
     localStorage.setItem("invertTide", invertTideCheckbox.checked);
     renderFace();
@@ -417,6 +550,10 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "<" || e.key === ",") {
     setIntensity(currentIntensity - 0.25);
   }
+});
+
+document.addEventListener("keyup", (e) => {
+  delete heldKeys[e.key];
 });
 
 // Recompute clock geometry (for the particle clip circle) whenever the
@@ -449,6 +586,105 @@ appEl.addEventListener("click", (e) => {
 setInterval(renderFace, TIDE_REDRAW_INTERVAL_MS);
 setInterval(renderHands, HANDS_REDRAW_INTERVAL_MS);
 setInterval(loadTides, 10 * 60 * 1000);
+
+// Continuous update loop for time simulation and display
+function updateTimeSimulation() {
+  const now = Date.now();
+  const elapsedMs = now - lastUpdateTime;
+  lastUpdateTime = now;
+
+  // Handle arrow key acceleration/deceleration
+  const isRightHeld = heldKeys["ArrowRight"];
+  const isLeftHeld = heldKeys["ArrowLeft"];
+  
+  if (isRightHeld) {
+    // Increase speed (go faster forward or slower backward)
+    const accelerationRate = 0.05; // 5% change per frame
+    
+    if (timeMultiplier < 0) {
+      // Currently going backward - slow down the reverse (approach 0, then flip to forward)
+      timeMultiplier = timeMultiplier * (1 - accelerationRate);
+      if (timeMultiplier > -300.0) {
+        // When slowing down from backward and crossing under 5 min/sec, treat as real-time then jump to forward
+        timeMultiplier = 300.0; // Cross over to forward at 5 min/sec (300x)
+      }
+    } else if (timeMultiplier === 1.0) {
+      // At real-time forward - jump to 5 min/sec to start time travel
+      timeMultiplier = 300.0;
+    } else {
+      // Going forward faster than real-time - speed up
+      timeMultiplier = Math.min(86400, timeMultiplier * (1 + accelerationRate)); // 86400 = 24 hours per second
+    }
+    
+    // Initialize simulated time if not already started
+    if (!simulatedTime) {
+      simulatedTime = new Date();
+    }
+    
+    // Show speed indicator
+    const absSpeed = Math.abs(timeMultiplier);
+    const direction = timeMultiplier < 0 ? "← " : "→ ";
+    const speedText = absSpeed < 60 
+      ? `${absSpeed.toFixed(1)}x`
+      : absSpeed < 3600
+      ? `${(absSpeed / 60).toFixed(1)} min/sec`
+      : `${(absSpeed / 3600).toFixed(1)} hr/sec`;
+    showModeLabel(`${direction}${speedText}`);
+  } else if (isLeftHeld) {
+    // Decrease speed (go slower forward or faster backward)
+    const decelerationRate = 0.05;
+    
+    if (timeMultiplier > 0 && timeMultiplier > 1.0) {
+      // Currently going forward faster than real-time - slow down (approach real-time, then flip to backward)
+      timeMultiplier = timeMultiplier * (1 - decelerationRate);
+      if (timeMultiplier < 300.0) {
+        // When slowing down from forward and crossing under 5 min/sec, treat as real-time then jump to backward
+        timeMultiplier = -300.0; // Cross over to backward at 5 min/sec (300x)
+      }
+    } else if (timeMultiplier === 1.0) {
+      // At real-time forward - jump to backward at 5 min/sec
+      timeMultiplier = -300.0;
+    } else {
+      // Going backward - speed up the reverse
+      timeMultiplier = Math.max(-86400, timeMultiplier * (1 + decelerationRate)); // -86400 = -24 hours per second
+    }
+    
+    // Initialize simulated time if not already started
+    if (!simulatedTime) {
+      simulatedTime = new Date();
+    }
+    
+    // Show speed indicator
+    const absSpeed = Math.abs(timeMultiplier);
+    const direction = timeMultiplier < 0 ? "← " : "→ ";
+    const speedText = absSpeed < 60 
+      ? `${absSpeed.toFixed(1)}x`
+      : absSpeed < 3600
+      ? `${(absSpeed / 60).toFixed(1)} min/sec`
+      : `${(absSpeed / 3600).toFixed(1)} hr/sec`;
+    showModeLabel(`${direction}${speedText}`);
+  }
+
+  // Update simulated time if active
+  if (simulatedTime) {
+    const simulatedElapsedMs = elapsedMs * timeMultiplier;
+    simulatedTime = new Date(simulatedTime.getTime() + simulatedElapsedMs);
+    
+    // Render more frequently when time is accelerated (forward or backward)
+    if (Math.abs(timeMultiplier) > 1.0) {
+      renderFace();
+      renderHands();
+    }
+  }
+  
+  // Update date/time display
+  updateDateTimeDisplayText();
+  
+  requestAnimationFrame(updateTimeSimulation);
+}
+
+// Start the continuous update loop
+updateTimeSimulation();
 
 // Initial load.
 loadTides();

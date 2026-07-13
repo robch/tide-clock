@@ -10,7 +10,9 @@
   <canvas id="particleCanvas"></canvas>
 
   <div id="modeLabel" class="mode-label"></div>
+  
   <div id="tidePredictionsHigh" class="tide-predictions"></div>
+  <button id="jumpToHighBtn" class="jump-btn">▶▶</button>
   
   <div id="transportControls" class="permanent-transport">
     <button id="rewindBtn" class="transport-control-btn">◀</button>
@@ -19,23 +21,15 @@
   </div>
   
   <div id="dateTimeDisplay" class="datetime-display"></div>
+  
   <div id="tidePredictionsLow" class="tide-predictions-low"></div>
+  <button id="jumpToLowBtn" class="jump-btn">▶▶</button>
 
   <div class="app" id="app">
     <div class="clock-wrap">
       <div class="canvas-stack">
         <canvas id="clockFace" width="600" height="600"></canvas>
         <canvas id="clockHands" width="600" height="600"></canvas>
-      </div>
-    </div>
-
-    <div id="tapMenu" class="tap-menu hidden">
-      <button id="settingsBtn" class="tap-menu-btn">Settings</button>
-      <button id="fullscreenBtn" class="tap-menu-btn">Full Screen</button>
-      <div class="transport-controls">
-        <button id="backwardBtn" class="transport-btn">←</button>
-        <button id="nowBtn" class="transport-btn">Now</button>
-        <button id="forwardBtn" class="transport-btn">→</button>
       </div>
     </div>
 

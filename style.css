@@ -46,9 +46,8 @@ body {
 
 .datetime-display {
   position: fixed;
-  top: 50%;
+  bottom: 80px;
   right: 20px;
-  transform: translateY(-50%);
   z-index: 25;
   font-size: 1.0rem;
   letter-spacing: 0.02em;
@@ -70,14 +69,14 @@ body {
 .tide-predictions {
   position: fixed;
   top: 20px;
-  right: 20px;
+  left: 20px;
   z-index: 25;
   font-size: 1.0rem;
   letter-spacing: 0.02em;
   color: #cfe8f2;
   text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
   pointer-events: none;
-  text-align: right;
+  text-align: left;
   opacity: 1;
   transition: opacity 0.3s ease;
   font-variant-numeric: tabular-nums;
@@ -91,14 +90,47 @@ body {
 
 .permanent-transport {
   position: fixed;
-  top: 50%;
+  bottom: 20px;
   right: 20px;
-  transform: translateY(calc(-50% + 80px));
   z-index: 25;
   display: flex;
   gap: 8px;
   pointer-events: auto;
 }
+
+.jump-btn {
+  position: fixed;
+  left: 20px;
+  z-index: 25;
+  background: rgba(14, 27, 36, 0.85);
+  border: 1px solid #2aa9d6;
+  color: #e8f1f5;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.15s ease;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.jump-btn:hover {
+  background: rgba(42, 169, 214, 0.35);
+}
+
+.jump-btn:active {
+  background: rgba(42, 169, 214, 0.55);
+}
+
+#jumpToHighBtn {
+  top: 100px;
+}
+
+#jumpToLowBtn {
+  bottom: 20px;
+}
+
 
 .transport-control-btn {
   background: rgba(14, 27, 36, 0.85);
@@ -134,26 +166,21 @@ body {
   transform: none;
 }
 
-  font-variant-numeric: tabular-nums;
-  font-family: 'Courier New', Courier, monospace;
-  line-height: 1.6;
-}
-
 .tide-predictions.hidden {
   opacity: 0;
 }
 
 .tide-predictions-low {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 80px;
+  left: 20px;
   z-index: 25;
   font-size: 1.0rem;
   letter-spacing: 0.02em;
   color: #cfe8f2;
   text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
   pointer-events: none;
-  text-align: right;
+  text-align: left;
   opacity: 1;
   transition: opacity 0.3s ease;
   font-variant-numeric: tabular-nums;

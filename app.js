@@ -38,11 +38,8 @@ const stationNameEl = document.getElementById("stationName");
 const loadBtn = document.getElementById("loadBtn");
 const statusEl = document.getElementById("status");
 const settingsPanel = document.getElementById("settingsPanel");
-const settingsBtn = document.getElementById("settingsBtn");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
-const fullscreenBtn = document.getElementById("fullscreenBtn");
 const appEl = document.getElementById("app");
-const tapMenu = document.getElementById("tapMenu");
 const useLocationBtn = document.getElementById("useLocationBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
 const particleModeSelect = document.getElementById("particleMode");
@@ -55,12 +52,11 @@ const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
 const tideHeightDisplayEl = document.getElementById("tideHeightDisplay");
 const tidePredictionsHighEl = document.getElementById("tidePredictionsHigh");
 const tidePredictionsLowEl = document.getElementById("tidePredictionsLow");
-const backwardBtn = document.getElementById("backwardBtn");
-const forwardBtn = document.getElementById("forwardBtn");
-const nowBtn = document.getElementById("nowBtn");
 const rewindBtn = document.getElementById("rewindBtn");
 const pauseResetBtn = document.getElementById("pauseResetBtn");
 const fastForwardBtn = document.getElementById("fastForwardBtn");
+const jumpToHighBtn = document.getElementById("jumpToHighBtn");
+const jumpToLowBtn = document.getElementById("jumpToLowBtn");
 
 let redrawTimer = null;
 let currentSamples = null;
@@ -71,6 +67,7 @@ let simulatedTime = null; // null = use real time, Date object = simulated time
 let timeMultiplier = 1.0; // -86400.0 to +86400.0 (negative = reverse, positive = forward, 86400 = 24hr/sec)
 let lastUpdateTime = Date.now();
 let heldKeys = {}; // Track which keys are being held
+let targetTime = null; // When jumping to a specific time, this is the target
 
 // Restore the "flip tide direction" preference from localStorage.
 invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
@@ -229,7 +226,7 @@ function updateTidePredictions(now) {
     const timeStr = formatTimeOnly(nextHigh.time);
     const dateStr = formatDateOnly(nextHigh.time);
     
-    tidePredictionsHighEl.innerHTML = `${timeStr}<br>${dateStr}<br><span class="tide-marker-high">●</span> High: ${nextHigh.height.toFixed(1)} ft`;
+    tidePredictionsHighEl.innerHTML = `${timeStr}<br>${dateStr}<br>High: ${nextHigh.height.toFixed(1)} ft <span class="tide-marker-high">●</span>`;
   } else {
     tidePredictionsHighEl.innerHTML = '';
   }
@@ -238,7 +235,7 @@ function updateTidePredictions(now) {
     const timeStr = formatTimeOnly(nextLow.time);
     const dateStr = formatDateOnly(nextLow.time);
     
-    tidePredictionsLowEl.innerHTML = `${timeStr}<br>${dateStr}<br><span class="tide-marker-low">○</span> Low: ${nextLow.height.toFixed(1)} ft`;
+    tidePredictionsLowEl.innerHTML = `${timeStr}<br>${dateStr}<br>Low: ${nextLow.height.toFixed(1)} ft <span class="tide-marker-low">○</span>`;
   } else {
     tidePredictionsLowEl.innerHTML = '';
   }
@@ -600,12 +597,6 @@ showDateTimeCheckbox.addEventListener("change", () => {
   updateDateTimeDisplay();
 });
 
-settingsBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  tapMenu.classList.add("hidden");
-  settingsPanel.classList.remove("hidden");
-});
-
 closeSettingsBtn.addEventListener("click", () => {
   settingsPanel.classList.add("hidden");
 });
@@ -617,7 +608,7 @@ settingsPanel.addEventListener("click", (e) => {
   }
 });
 
-// Escape key dismisses the settings panel (and the tap menu, if open).
+// Escape key dismisses the settings panel.
 // 'f' toggles full screen and 's' opens settings, both from anywhere on the
 // main screen (but not while typing into an input field).
 document.addEventListener("keydown", (e) => {
@@ -627,9 +618,26 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!settingsPanel.classList.contains("hidden")) {
       settingsPanel.classList.add("hidden");
-    } else if (!tapMenu.classList.contains("hidden")) {
-      tapMenu.classList.add("hidden");
+      return;
     }
+    // If not in settings and not in fullscreen
+    if (!document.fullscreenElement) {
+      const isMoving = Math.abs(timeMultiplier) > 1.0;
+      if (isMoving) {
+        // First escape when not fullscreen: stop
+        timeMultiplier = 1.0;
+        targetTime = null;
+      } else if (simulatedTime !== null) {
+        // Second escape when stopped: go to now
+        simulatedTime = null;
+        timeMultiplier = 1.0;
+        targetTime = null;
+        lastUpdateTime = Date.now();
+        renderFace();
+        renderHands();
+      }
+    }
+    // If in fullscreen, browser handles it (exits fullscreen)
     return;
   }
 
@@ -637,8 +645,25 @@ document.addEventListener("keydown", (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
 
-  if (e.key === "f" || e.key === "F") {
-    tapMenu.classList.add("hidden");
+  if (e.key === "Enter") {
+    if (!document.fullscreenElement) {
+      // Not in fullscreen - enter fullscreen
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error("Failed to enter fullscreen:", err);
+      });
+    } else {
+      // In fullscreen
+      const isMoving = Math.abs(timeMultiplier) > 1.0;
+      if (isMoving) {
+        // Moving: stop
+        timeMultiplier = 1.0;
+        targetTime = null;
+      } else {
+        // Stopped: seek to next tide
+        seekToNextTide();
+      }
+    }
+  } else if (e.key === "f" || e.key === "F") {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch((err) => {
         console.error("Failed to enter fullscreen:", err);
@@ -647,20 +672,23 @@ document.addEventListener("keydown", (e) => {
       document.exitFullscreen();
     }
   } else if (e.key === "s" || e.key === "S") {
-    tapMenu.classList.add("hidden");
     settingsPanel.classList.remove("hidden");
   } else if (e.key === " " || e.key === "Spacebar") {
     e.preventDefault();
-    // Space: if at real-time (1x), jump to current time; otherwise just reset speed to 1x
-    if (timeMultiplier === 1.0 && simulatedTime !== null) {
-      // Already at 1x but in simulated time - jump to current time
+    // Space: if moving, stop; if stopped and not at current time, go to now
+    const isMoving = Math.abs(timeMultiplier) > 1.0;
+    if (isMoving) {
+      // Stop
+      timeMultiplier = 1.0;
+      targetTime = null;
+    } else if (simulatedTime !== null) {
+      // Stopped but not at current time - go to now
       simulatedTime = null;
+      timeMultiplier = 1.0;
+      targetTime = null;
       lastUpdateTime = Date.now();
       renderFace();
       renderHands();
-    } else {
-      // Not at 1x - just stop acceleration/deceleration and go to real-time
-      timeMultiplier = 1.0;
     }
   } else if (e.key === "m" || e.key === "M") {
     // M key: flip tide view (toggle invert mode)
@@ -688,30 +716,49 @@ document.addEventListener("fullscreenchange", () => {
   setTimeout(resizeParticleCanvas, 50);
 });
 
-fullscreenBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  tapMenu.classList.add("hidden");
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch((err) => {
-      console.error("Failed to enter fullscreen:", err);
-    });
-  } else {
-    document.exitFullscreen();
-  }
-});
+// Clicking anywhere on the app:
+// - If not in fullscreen: enter fullscreen
+// - If in fullscreen and moving: stop
+// - If in fullscreen and stopped: seek to next tide
+// Double-click: stop and reset to current time (always)
+let lastClickTime = 0;
+const DOUBLE_CLICK_DELAY = 300; // ms
 
-// Clicking anywhere on the app (but not on the menu or settings panel
-// itself) toggles the floating tap menu and stops time acceleration when opening.
 appEl.addEventListener("click", (e) => {
-  if (settingsPanel.contains(e.target) || tapMenu.contains(e.target)) return;
+  if (settingsPanel.contains(e.target)) return;
   
-  // Only stop acceleration when OPENING the menu (not closing it)
-  const isOpening = tapMenu.classList.contains("hidden");
-  if (isOpening) {
+  const now = Date.now();
+  const isDoubleClick = (now - lastClickTime) < DOUBLE_CLICK_DELAY;
+  lastClickTime = now;
+  
+  if (isDoubleClick) {
+    // Double-click: stop and reset to current time
+    simulatedTime = null;
     timeMultiplier = 1.0;
+    targetTime = null;
+    lastUpdateTime = Date.now();
+    renderFace();
+    renderHands();
+  } else {
+    // Single click
+    if (!document.fullscreenElement) {
+      // Not in fullscreen - enter fullscreen
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error("Failed to enter fullscreen:", err);
+      });
+    } else {
+      // In fullscreen
+      const isMoving = Math.abs(timeMultiplier) > 1.0;
+      if (isMoving) {
+        // Stop
+        timeMultiplier = 1.0;
+        targetTime = null;
+      } else {
+        // Seek to next tide
+        seekToNextTide();
+      }
+    }
   }
-  
-  tapMenu.classList.toggle("hidden");
 });
 
 // Redraw the tide face on its own (parameterized) interval, and the hands
@@ -803,6 +850,32 @@ function updateTimeSimulation() {
     const simulatedElapsedMs = elapsedMs * timeMultiplier;
     simulatedTime = new Date(simulatedTime.getTime() + simulatedElapsedMs);
     
+    // Check if we've reached the target time
+    if (targetTime) {
+      const reachedTarget = (timeMultiplier > 0 && simulatedTime >= targetTime) ||
+                           (timeMultiplier < 0 && simulatedTime <= targetTime);
+      if (reachedTarget) {
+        simulatedTime = new Date(targetTime.getTime()); // Set exactly to target time
+        timeMultiplier = 1.0;
+        targetTime = null;
+        renderFace(); // Force immediate render at exact target time
+        renderHands();
+      } else {
+        // Accelerate while seeking to target - up to 12600x (3.5 hours per second)
+        // But don't decelerate if already going faster
+        const absSpeed = Math.abs(timeMultiplier);
+        if (absSpeed < 12600) {
+          const accelerationRate = 0.03;
+          if (timeMultiplier > 0) {
+            timeMultiplier = Math.min(12600, timeMultiplier * (1 + accelerationRate));
+          } else {
+            timeMultiplier = Math.max(-12600, timeMultiplier * (1 + accelerationRate));
+          }
+        }
+        // If already faster than 12600, just maintain current speed
+      }
+    }
+    
     // Render more frequently when time is accelerated (forward or backward)
     if (Math.abs(timeMultiplier) > 1.0) {
       renderFace();
@@ -818,56 +891,6 @@ function updateTimeSimulation() {
 
 // Start the continuous update loop
 updateTimeSimulation();
-
-
-// Time control buttons - work exactly like arrow keys
-backwardBtn.addEventListener("mousedown", () => {
-  heldKeys["ArrowLeft"] = true;
-});
-backwardBtn.addEventListener("mouseup", () => {
-  delete heldKeys["ArrowLeft"];
-});
-backwardBtn.addEventListener("mouseleave", () => {
-  delete heldKeys["ArrowLeft"];
-});
-
-forwardBtn.addEventListener("mousedown", () => {
-  heldKeys["ArrowRight"] = true;
-});
-forwardBtn.addEventListener("mouseup", () => {
-  delete heldKeys["ArrowRight"];
-});
-forwardBtn.addEventListener("mouseleave", () => {
-  delete heldKeys["ArrowRight"];
-});
-
-// Touch events for mobile
-backwardBtn.addEventListener("touchstart", (e) => {
-  e.preventDefault();
-  heldKeys["ArrowLeft"] = true;
-});
-backwardBtn.addEventListener("touchend", () => {
-  delete heldKeys["ArrowLeft"];
-});
-
-forwardBtn.addEventListener("touchstart", (e) => {
-  e.preventDefault();
-  heldKeys["ArrowRight"] = true;
-});
-forwardBtn.addEventListener("touchend", () => {
-  delete heldKeys["ArrowRight"];
-});
-
-// "Now" button - resets to current time and 1x speed
-nowBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  simulatedTime = null;
-  timeMultiplier = 1.0;
-  lastUpdateTime = Date.now();
-  renderFace();
-  renderHands();
-  tapMenu.classList.add("hidden");
-});
 
 // Permanent transport controls
 rewindBtn.addEventListener("mousedown", () => {
@@ -897,15 +920,136 @@ pauseResetBtn.addEventListener("click", () => {
   if (isMoving) {
     // Pause - return to 1x
     timeMultiplier = 1.0;
+    targetTime = null; // Clear any target
   } else if (!atCurrentTime) {
     // Reset - return to current time
     simulatedTime = null;
     timeMultiplier = 1.0;
+    targetTime = null; // Clear any target
     lastUpdateTime = Date.now();
     renderFace();
     renderHands();
   }
 });
+
+// Jump to high/low tide buttons
+jumpToHighBtn.addEventListener("click", () => {
+  if (!currentSamples || currentSamples.length < 3) return;
+  
+  const now = getCurrentTime();
+  const nextHigh = findNextHighTide(now);
+  
+  if (nextHigh) {
+    targetTime = nextHigh.time;
+    if (!simulatedTime) simulatedTime = new Date();
+    
+    const needsForward = targetTime > simulatedTime;
+    const absSpeed = Math.abs(timeMultiplier);
+    const goingForward = timeMultiplier > 0;
+    const tooSlow = absSpeed < 1000;
+    
+    // If wrong direction OR too slow, reset to correct direction at current speed (or 300 minimum)
+    if ((needsForward && !goingForward) || (!needsForward && goingForward) || tooSlow) {
+      const newSpeed = Math.max(300, absSpeed);
+      timeMultiplier = needsForward ? newSpeed : -newSpeed;
+    }
+    // Otherwise keep current speed and direction
+  }
+});
+
+jumpToLowBtn.addEventListener("click", () => {
+  if (!currentSamples || currentSamples.length < 3) return;
+  
+  const now = getCurrentTime();
+  const nextLow = findNextLowTide(now);
+  
+  if (nextLow) {
+    targetTime = nextLow.time;
+    if (!simulatedTime) simulatedTime = new Date();
+    
+    const needsForward = targetTime > simulatedTime;
+    const absSpeed = Math.abs(timeMultiplier);
+    const goingForward = timeMultiplier > 0;
+    const tooSlow = absSpeed < 1000;
+    
+    // If wrong direction OR too slow, reset to correct direction at current speed (or 300 minimum)
+    if ((needsForward && !goingForward) || (!needsForward && goingForward) || tooSlow) {
+      const newSpeed = Math.max(300, absSpeed);
+      timeMultiplier = needsForward ? newSpeed : -newSpeed;
+    }
+    // Otherwise keep current speed and direction
+  }
+});
+
+// Helper function to seek to whichever tide (high or low) is next/closest
+function seekToNextTide() {
+  if (!currentSamples || currentSamples.length < 3) return;
+  
+  const now = getCurrentTime();
+  const nextHigh = findNextHighTide(now);
+  const nextLow = findNextLowTide(now);
+  
+  // Pick whichever is sooner
+  let target = null;
+  if (nextHigh && nextLow) {
+    target = (nextHigh.time < nextLow.time) ? nextHigh : nextLow;
+  } else if (nextHigh) {
+    target = nextHigh;
+  } else if (nextLow) {
+    target = nextLow;
+  }
+  
+  if (target) {
+    targetTime = target.time;
+    if (!simulatedTime) simulatedTime = new Date();
+    
+    const needsForward = targetTime > simulatedTime;
+    const absSpeed = Math.abs(timeMultiplier);
+    const goingForward = timeMultiplier > 0;
+    const tooSlow = absSpeed < 1000;
+    
+    // If wrong direction OR too slow, reset to correct direction at current speed (or 300 minimum)
+    if ((needsForward && !goingForward) || (!needsForward && goingForward) || tooSlow) {
+      const newSpeed = Math.max(300, absSpeed);
+      timeMultiplier = needsForward ? newSpeed : -newSpeed;
+    }
+  }
+}
+
+// Helper functions to find next high/low tides
+function findNextHighTide(fromTime) {
+  if (!currentSamples || currentSamples.length < 3) return null;
+  
+  for (let i = 1; i < currentSamples.length - 1; i++) {
+    const prev = currentSamples[i - 1];
+    const cur = currentSamples[i];
+    const next = currentSamples[i + 1];
+    
+    const isHigh = cur.height >= prev.height && cur.height >= next.height;
+    if (isHigh && cur.time > fromTime) {
+      if (cur.height === prev.height && cur.height === next.height) continue;
+      return cur;
+    }
+  }
+  return null;
+}
+
+function findNextLowTide(fromTime) {
+  if (!currentSamples || currentSamples.length < 3) return null;
+  
+  for (let i = 1; i < currentSamples.length - 1; i++) {
+    const prev = currentSamples[i - 1];
+    const cur = currentSamples[i];
+    const next = currentSamples[i + 1];
+    
+    const isLow = cur.height <= prev.height && cur.height <= next.height;
+    if (isLow && cur.time > fromTime) {
+      if (cur.height === prev.height && cur.height === next.height) continue;
+      return cur;
+    }
+  }
+  return null;
+}
 
 // Touch events for mobile
 rewindBtn.addEventListener("touchstart", (e) => {

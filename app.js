@@ -51,6 +51,9 @@ const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
 const showSecondHandCheckbox = document.getElementById("showSecondHand");
 const showDateTimeCheckbox = document.getElementById("showDateTime");
 const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
+const tideHeightDisplayEl = document.getElementById("tideHeightDisplay");
+const tidePredictionsHighEl = document.getElementById("tidePredictionsHigh");
+const tidePredictionsLowEl = document.getElementById("tidePredictionsLow");
 
 let redrawTimer = null;
 let currentSamples = null;
@@ -91,33 +94,124 @@ function getCurrentTime() {
   return simulatedTime || new Date();
 }
 
-// Format date/time for display
+// Format date/time for display (single line)
 function formatDateTime(date) {
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   
   const dayName = days[date.getDay()];
   const monthName = months[date.getMonth()];
   const day = date.getDate();
-  const year = date.getFullYear();
   
   let hours = date.getHours();
   const minutes = date.getMinutes();
   const seconds = date.getSeconds();
-  const ampm = hours >= 12 ? "PM" : "AM";
+  const ampm = hours >= 12 ? "pm" : "am";
   hours = hours % 12;
   if (hours === 0) hours = 12;
   
   const mm = String(minutes).padStart(2, "0");
   const ss = String(seconds).padStart(2, "0");
   
-  return `${dayName}, ${monthName} ${day}, ${year}\n${hours}:${mm}:${ss} ${ampm}`;
+  return `${dayName}, ${monthName} ${day}  ${hours}:${mm}:${ss} ${ampm}`;
+}
+
+// Format time only (for tide predictions)
+function formatTimeOnly(date) {
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours >= 12 ? "pm" : "am";
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  
+  return `${hours}:${mm}:${ss} ${ampm}`;
+}
+
+// Format date only (for tide predictions)
+function formatDateOnly(date) {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  
+  const dayName = days[date.getDay()];
+  const monthName = months[date.getMonth()];
+  const day = date.getDate();
+  
+  return `${dayName}, ${monthName} ${day}`;
 }
 
 // Update the date/time display element
 function updateDateTimeDisplayText() {
   const now = getCurrentTime();
-  dateTimeDisplayEl.textContent = formatDateTime(now);
+  const timeStr = formatTimeOnly(now);
+  const dateStr = formatDateOnly(now);
+  
+  // Update tide height display
+  if (currentSamples && currentSamples.length > 0) {
+    const nearest = currentSamples.reduce((best, s) => {
+      const d = Math.abs(s.time - now);
+      return !best || d < Math.abs(best.time - now) ? s : best;
+    }, null);
+    
+    if (nearest) {
+      // Put all 3 lines together in one element, just like high/low
+      dateTimeDisplayEl.innerHTML = `${timeStr}<br>${dateStr}<br><span class="tide-marker-current">●</span> Tide: ${nearest.height.toFixed(1)} ft`;
+    }
+    
+    // Update next high/low tide predictions
+    updateTidePredictions(now);
+  }
+}
+
+// Find and display next high and low tides
+function updateTidePredictions(now) {
+  if (!currentSamples || currentSamples.length < 3) {
+    tidePredictionsHighEl.innerHTML = '';
+    tidePredictionsLowEl.innerHTML = '';
+    return;
+  }
+  
+  // Find all high/low tide points after 'now'
+  const extrema = [];
+  for (let i = 1; i < currentSamples.length - 1; i++) {
+    const prev = currentSamples[i - 1];
+    const cur = currentSamples[i];
+    const next = currentSamples[i + 1];
+    
+    const isHigh = cur.height >= prev.height && cur.height >= next.height;
+    const isLow = cur.height <= prev.height && cur.height <= next.height;
+    
+    if ((isHigh || isLow) && cur.time > now) {
+      // Skip flat runs
+      if (cur.height === prev.height && cur.height === next.height) continue;
+      extrema.push({ time: cur.time, height: cur.height, isHigh });
+    }
+  }
+  
+  // Find next high and next low
+  const nextHigh = extrema.find(e => e.isHigh);
+  const nextLow = extrema.find(e => !e.isHigh);
+  
+  if (nextHigh) {
+    const timeStr = formatTimeOnly(nextHigh.time);
+    const dateStr = formatDateOnly(nextHigh.time);
+    
+    tidePredictionsHighEl.innerHTML = `${timeStr}<br>${dateStr}<br><span class="tide-marker-high">●</span> High: ${nextHigh.height.toFixed(1)} ft`;
+  } else {
+    tidePredictionsHighEl.innerHTML = '';
+  }
+  
+  if (nextLow) {
+    const timeStr = formatTimeOnly(nextLow.time);
+    const dateStr = formatDateOnly(nextLow.time);
+    
+    tidePredictionsLowEl.innerHTML = `${timeStr}<br>${dateStr}<br><span class="tide-marker-low">○</span> Low: ${nextLow.height.toFixed(1)} ft`;
+  } else {
+    tidePredictionsLowEl.innerHTML = '';
+  }
 }
 
 // Restore the background animation preference from localStorage.

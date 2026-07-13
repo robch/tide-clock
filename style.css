@@ -28,37 +28,124 @@ body {
 
 .mode-label {
   position: fixed;
-  bottom: 8%;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
-  font-size: 1.1rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 1.0rem;
+  letter-spacing: 0.02em;
   color: #cfe8f2;
   text-shadow: 0 0 12px rgba(79, 214, 255, 0.6);
   opacity: 0;
   pointer-events: none;
   transition: opacity 1.2s ease;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', Courier, monospace;
+  text-align: center;
 }
 
 .datetime-display {
   position: fixed;
-  top: 12%;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
   z-index: 25;
-  font-size: 1.1rem;
+  font-size: 1.0rem;
   letter-spacing: 0.02em;
   color: #cfe8f2;
   text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
   pointer-events: none;
-  text-align: center;
+  text-align: right;
   opacity: 1;
   transition: opacity 0.3s ease;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
 }
 
 .datetime-display.hidden {
+  opacity: 0;
+}
+
+.tide-predictions {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 25;
+  font-size: 1.0rem;
+  letter-spacing: 0.02em;
+  color: #cfe8f2;
+  text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
+  pointer-events: none;
+  text-align: right;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
+}
+
+.tide-predictions.hidden {
+  opacity: 0;
+}
+
+.tide-predictions-low {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 25;
+  font-size: 1.0rem;
+  letter-spacing: 0.02em;
+  color: #cfe8f2;
+  text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
+  pointer-events: none;
+  text-align: right;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
+}
+
+.tide-predictions-low.hidden {
+  opacity: 0;
+}
+
+.tide-marker-high {
+  color: #ffd166;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}
+
+.tide-marker-low {
+  color: #ffd166;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.6);
+}
+
+.tide-marker-current {
+  color: #4fd6ff;
+  text-shadow: 0 0 8px rgba(79, 214, 255, 0.6);
+}
+
+.tide-height-display {
+  position: fixed;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  z-index: 25;
+  font-size: 1.0rem;
+  letter-spacing: 0.02em;
+  color: #cfe8f2;
+  text-shadow: 0 0 8px rgba(79, 214, 255, 0.4);
+  pointer-events: none;
+  text-align: right;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
+}
+
+.tide-height-display.hidden {
   opacity: 0;
 }
 

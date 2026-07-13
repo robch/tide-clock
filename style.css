@@ -46,7 +46,7 @@ body {
 
 .settings-btn {
   position: fixed;
-  top: 20px;
+  top: 100px;
   right: 20px;
   z-index: 50;
   background: rgba(14, 27, 36, 0.85);

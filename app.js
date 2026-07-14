@@ -42,6 +42,8 @@ const settingsBtn = document.getElementById("settingsBtn");
 const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 const appEl = document.getElementById("app");
 const useLocationBtn = document.getElementById("useLocationBtn");
+const placeNameInput = document.getElementById("placeNameInput");
+const usePlaceBtn = document.getElementById("usePlaceBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
 const particleModeSelect = document.getElementById("particleMode");
 const showHourHandCheckbox = document.getElementById("showHourHand");
@@ -406,6 +408,86 @@ async function findNearestStations(latitude, longitude, limit = 8) {
     .slice(0, limit);
 }
 
+/**
+ * Geocode a free-text place name (e.g. "Eastport, Maine" or "Bay of Fundy")
+ * to lat/lon using the Nominatim (OpenStreetMap) search API - same technique
+ * as GeocodePlace in cycod-main2/src/mcp/osm/Tools/OpenStreetMapTools.cs,
+ * just called directly from the browser via fetch instead of C# HttpClient.
+ * Public, no API key, but please keep request volume low and set a
+ * descriptive User-Agent-ish param (Nominatim's usage policy asks for
+ * identifying request info; browsers won't let us set User-Agent header
+ * directly, so we pass an email/referrer-ish param instead where possible).
+ */
+async function geocodePlace(placeName, limit = 1) {
+  if (!placeName || !placeName.trim()) {
+    throw new Error("Please enter a place name.");
+  }
+  const params = new URLSearchParams({
+    q: placeName.trim(),
+    format: "json",
+    limit: String(limit),
+  });
+  const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`Geocoding error: ${res.status}`);
+  const results = await res.json();
+  if (!results.length) {
+    throw new Error(`No location found matching "${placeName}".`);
+  }
+  const best = results[0];
+  return {
+    latitude: parseFloat(best.lat),
+    longitude: parseFloat(best.lon),
+    displayName: best.display_name,
+  };
+}
+
+/** Given a free-text place name, geocode it then find/load the nearest
+ *  usable NOAA tide station - same nearest-station-with-fallback logic as
+ *  useMyLocation, just starting from a geocoded point instead of GPS. */
+async function usePlace() {
+  usePlaceBtn.disabled = true;
+  const placeName = placeNameInput.value;
+  setStatus(`Looking up "${placeName}"...`);
+  try {
+    const { latitude, longitude, displayName } = await geocodePlace(placeName);
+    setStatus(`Found ${displayName} - finding nearest tide station...`);
+    const candidates = await findNearestStations(latitude, longitude);
+    if (!candidates.length) {
+      setStatus("No nearby tide station found.", true);
+      return;
+    }
+
+    let lastErr = null;
+    for (const candidate of candidates) {
+      try {
+        setStatus(`Trying station ${candidate.id} (${candidate.distanceKm.toFixed(0)} km away)...`);
+        const samples = await fetchTidePredictions(candidate.id);
+        stationIdInput.value = candidate.id;
+        stationNameEl.textContent =
+          `${candidate.name}, ${candidate.state ?? ""} (${candidate.distanceKm.toFixed(0)} km away)`;
+        currentSamples = samples;
+        currentHeightRange = computeHeightRange(samples);
+        renderFace();
+        renderHands();
+        setStatus(`Loaded ${samples.length} samples from station ${candidate.id} (range ${currentHeightRange.hMin.toFixed(1)}ft to ${currentHeightRange.hMax.toFixed(1)}ft).`);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) {
+      setStatus(`No nearby stations had usable data: ${lastErr.message}`, true);
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus(`Place lookup error: ${err.message}`, true);
+  } finally {
+    usePlaceBtn.disabled = false;
+  }
+}
+
 /** Ask the browser for the user's real GPS location (with permission prompt). */
 function getBrowserLocation() {
   return new Promise((resolve, reject) => {
@@ -603,6 +685,7 @@ async function loadTides() {
 
 loadBtn.addEventListener("click", loadTides);
 useLocationBtn.addEventListener("click", useMyLocation);
+usePlaceBtn.addEventListener("click", usePlace);
 invertTideCheckbox.addEventListener("change", () => {
   localStorage.setItem("invertTide", invertTideCheckbox.checked);
   renderFace();

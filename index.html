@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Tide Clock</title>
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <canvas id="particleCanvas"></canvas>
@@ -12,6 +15,7 @@
   <div id="modeLabel" class="mode-label"></div>
   
   <button id="settingsBtn" class="settings-btn">...</button>
+  <button id="bobModeBtn" class="settings-btn bob-btn" title="Bob mode">bob</button>
   
   <div id="tidePredictionsHigh" class="tide-predictions"></div>
   <button id="jumpToHighBtn" class="jump-btn">▶▶</button>
@@ -46,20 +50,18 @@
           <input id="invertTide" type="checkbox" style="width: auto;" />
           Flip tide direction (fill from center outward)
         </label>
-        <!-- Clock hand visibility controls hidden but code preserved
         <label style="flex-direction: row; align-items: center; gap: 8px;">
-          <input id="showHourHand" type="checkbox" style="width: auto;" checked />
+          <input id="showHourHand" type="checkbox" style="width: auto;" />
           Show hour hand
         </label>
         <label style="flex-direction: row; align-items: center; gap: 8px;">
-          <input id="showMinuteHand" type="checkbox" style="width: auto;" checked />
+          <input id="showMinuteHand" type="checkbox" style="width: auto;" />
           Show minute hand
         </label>
         <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="showSecondHand" type="checkbox" style="width: auto;" />
           Show second hand
         </label>
-        -->
         <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="showDateTime" type="checkbox" style="width: auto;" checked />
           Show date/time
@@ -85,8 +87,8 @@
     </div>
   </div>
 
-  <script src="tideClock.js"></script>
-  <script src="particles.js"></script>
-  <script src="app.js"></script>
+  <script src="tideClock.js?v=3"></script>
+  <script src="particles.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

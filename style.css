@@ -72,6 +72,15 @@ body {
   background: rgba(42, 169, 214, 0.55);
 }
 
+.bob-btn {
+  top: 44px;
+}
+
+.bob-btn.active {
+  background: rgba(42, 169, 214, 0.55);
+  border-color: #4fd6ff;
+}
+
 .datetime-display {
   position: fixed;
   bottom: 80px;

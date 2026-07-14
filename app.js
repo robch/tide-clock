@@ -44,11 +44,11 @@ const appEl = document.getElementById("app");
 const useLocationBtn = document.getElementById("useLocationBtn");
 const invertTideCheckbox = document.getElementById("invertTide");
 const particleModeSelect = document.getElementById("particleMode");
-// Clock hand checkboxes removed from UI but references kept for code preservation
-const showHourHandCheckbox = null;
-const showMinuteHandCheckbox = null;
-const showSecondHandCheckbox = null;
+const showHourHandCheckbox = document.getElementById("showHourHand");
+const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
+const showSecondHandCheckbox = document.getElementById("showSecondHand");
 const showDateTimeCheckbox = document.getElementById("showDateTime");
+const bobModeBtn = document.getElementById("bobModeBtn");
 const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
 const tideHeightDisplayEl = document.getElementById("tideHeightDisplay");
 const tidePredictionsHighEl = document.getElementById("tidePredictionsHigh");
@@ -73,13 +73,10 @@ let targetTime = null; // When jumping to a specific time, this is the target
 // Restore the "flip tide direction" preference from localStorage.
 invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
 
-// Clock hand visibility hardcoded to false (hidden from UI, code preserved)
-const showHourHand = false;
-const showMinuteHand = false;
-const showSecondHand = false;
-
-// Restore date/time display preference from localStorage.
-showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
+// Restore clock hand visibility preferences from localStorage (default: all hidden).
+showHourHandCheckbox.checked = localStorage.getItem("showHourHand") === "true";
+showMinuteHandCheckbox.checked = localStorage.getItem("showMinuteHand") === "true";
+showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "true";
 
 // Restore date/time display preference from localStorage.
 showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
@@ -196,6 +193,12 @@ function updatePauseResetButton() {
 
 // Find and display next high and low tides
 function updateTidePredictions(now) {
+  if (bobModeBtn.classList.contains("active")) {
+    tidePredictionsHighEl.innerHTML = '';
+    tidePredictionsLowEl.innerHTML = '';
+    return;
+  }
+
   if (!currentSamples || currentSamples.length < 3) {
     tidePredictionsHighEl.innerHTML = '';
     tidePredictionsLowEl.innerHTML = '';
@@ -284,18 +287,18 @@ particleModeSelect.addEventListener("change", () => {
 particleField.setMode(currentParticleMode);
 particleField.start();
 
-// Function to update second hand checkbox state based on hour/minute hand visibility (preserved but unused)
+// Updates the second hand checkbox's enabled state based on hour/minute hand visibility
+// (second hand can only be shown if both hour and minute hands are shown).
 function updateSecondHandCheckboxState() {
-  // Disabled - hands are now hardcoded to false
-  // const canShowSecondHand = showHourHandCheckbox.checked && showMinuteHandCheckbox.checked;
-  // showSecondHandCheckbox.disabled = !canShowSecondHand;
-  // if (!canShowSecondHand && showSecondHandCheckbox.checked) {
-  //   showSecondHandCheckbox.checked = false;
-  //   localStorage.setItem("showSecondHand", "false");
-  // }
+  const canShowSecondHand = showHourHandCheckbox.checked && showMinuteHandCheckbox.checked;
+  showSecondHandCheckbox.disabled = !canShowSecondHand;
+  if (!canShowSecondHand && showSecondHandCheckbox.checked) {
+    showSecondHandCheckbox.checked = false;
+    localStorage.setItem("showSecondHand", "false");
+  }
 }
 
-// Initial state update (now a no-op)
+// Initial state update
 updateSecondHandCheckboxState();
 
 // Restore intensity preference (0.25 .. 3.0, default 1.0).
@@ -507,8 +510,8 @@ function renderFace() {
   const opts = {
     ...currentHeightRange,
     invertTide: invertTideCheckbox.checked,
-    showHourHand: showHourHand,
-    showMinuteHand: showMinuteHand,
+    showHourHand: showHourHandCheckbox.checked,
+    showMinuteHand: showMinuteHandCheckbox.checked,
   };
   tideClock.drawFace(currentSamples, now, opts);
 
@@ -529,9 +532,9 @@ function renderFace() {
 
 function renderHands() {
   const opts = {
-    showHourHand: showHourHand,
-    showMinuteHand: showMinuteHand,
-    showSecondHand: showSecondHand,
+    showHourHand: showHourHandCheckbox.checked,
+    showMinuteHand: showMinuteHandCheckbox.checked,
+    showSecondHand: showSecondHandCheckbox.checked,
   };
   tideClock.drawHands(getCurrentTime(), opts);
 }
@@ -573,25 +576,68 @@ invertTideCheckbox.addEventListener("change", () => {
   renderFace();
 });
 
-// Clock hand event listeners removed (hands hardcoded to false, code preserved)
-// showHourHandCheckbox.addEventListener("change", () => {
-//   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
-//   updateSecondHandCheckboxState();
-//   renderFace(); // Re-render face to update gridline label position
-//   renderHands();
-// });
-// 
-// showMinuteHandCheckbox.addEventListener("change", () => {
-//   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
-//   updateSecondHandCheckboxState();
-//   renderFace(); // Re-render face to update gridline label position
-//   renderHands();
-// });
-// 
-// showSecondHandCheckbox.addEventListener("change", () => {
-//   localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
-//   renderHands();
-// });
+showHourHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
+  updateSecondHandCheckboxState();
+  renderFace(); // Re-render face to update gridline label position
+  renderHands();
+});
+
+showMinuteHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
+  updateSecondHandCheckboxState();
+  renderFace(); // Re-render face to update gridline label position
+  renderHands();
+});
+
+showSecondHandCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
+  renderHands();
+});
+
+// "Bob mode": turns on all clock hands and turns off the date/time and
+// tide-prediction (high/low) displays, in one click. Toggles back off
+// (restoring previous hand/date-time settings) if clicked again.
+let bobModePrevState = null;
+bobModeBtn.addEventListener("click", () => {
+  const isBobActive = bobModeBtn.classList.contains("active");
+
+  if (!isBobActive) {
+    // Remember current state so we can restore it when bob mode is turned off.
+    bobModePrevState = {
+      showHourHand: showHourHandCheckbox.checked,
+      showMinuteHand: showMinuteHandCheckbox.checked,
+      showSecondHand: showSecondHandCheckbox.checked,
+      showDateTime: showDateTimeCheckbox.checked,
+    };
+
+    showHourHandCheckbox.checked = true;
+    showMinuteHandCheckbox.checked = true;
+    showSecondHandCheckbox.checked = true;
+    showDateTimeCheckbox.checked = false;
+
+    bobModeBtn.classList.add("active");
+  } else {
+    // Restore whatever was set before bob mode was enabled.
+    if (bobModePrevState) {
+      showHourHandCheckbox.checked = bobModePrevState.showHourHand;
+      showMinuteHandCheckbox.checked = bobModePrevState.showMinuteHand;
+      showSecondHandCheckbox.checked = bobModePrevState.showSecondHand;
+      showDateTimeCheckbox.checked = bobModePrevState.showDateTime;
+    }
+    bobModeBtn.classList.remove("active");
+  }
+
+  localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
+  localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
+  localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
+  localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);
+
+  updateSecondHandCheckboxState();
+  updateDateTimeDisplay();
+  renderFace();
+  renderHands();
+});
 
 showDateTimeCheckbox.addEventListener("change", () => {
   localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);

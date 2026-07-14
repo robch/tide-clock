@@ -160,6 +160,10 @@ body {
   background: rgba(42, 169, 214, 0.55);
 }
 
+.jump-btn.hidden {
+  display: none;
+}
+
 #jumpToHighBtn {
   top: 100px;
 }

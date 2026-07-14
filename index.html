@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Tide Clock</title>
-<link rel="stylesheet" href="style.css?v=3" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <canvas id="particleCanvas"></canvas>
@@ -66,6 +66,10 @@
           <input id="showDateTime" type="checkbox" style="width: auto;" checked />
           Show date/time
         </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showTidePredictions" type="checkbox" style="width: auto;" checked />
+          Show next high/low tides
+        </label>
         <label>
           Background Animation
           <select id="particleMode">
@@ -87,8 +91,8 @@
     </div>
   </div>
 
-  <script src="tideClock.js?v=3"></script>
-  <script src="particles.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="tideClock.js?v=5"></script>
+  <script src="particles.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

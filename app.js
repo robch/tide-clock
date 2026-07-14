@@ -48,6 +48,7 @@ const showHourHandCheckbox = document.getElementById("showHourHand");
 const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
 const showSecondHandCheckbox = document.getElementById("showSecondHand");
 const showDateTimeCheckbox = document.getElementById("showDateTime");
+const showTidePredictionsCheckbox = document.getElementById("showTidePredictions");
 const bobModeBtn = document.getElementById("bobModeBtn");
 const dateTimeDisplayEl = document.getElementById("dateTimeDisplay");
 const tideHeightDisplayEl = document.getElementById("tideHeightDisplay");
@@ -80,6 +81,9 @@ showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "tru
 
 // Restore date/time display preference from localStorage.
 showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
+
+// Restore high/low tide predictions display preference from localStorage.
+showTidePredictionsCheckbox.checked = localStorage.getItem("showTidePredictions") !== "false"; // default true
 
 // Update date/time display visibility
 function updateDateTimeDisplay() {
@@ -191,9 +195,35 @@ function updatePauseResetButton() {
   }
 }
 
+// Shows/hides the jump-to-high/jump-to-low transport buttons in lockstep
+// with the high/low tide-prediction readouts (controlled by the
+// "Show next high/low tides" setting, which Bob mode also toggles).
+function updateTidePredictionButtonsVisibility() {
+  const hide = !showTidePredictionsCheckbox.checked;
+  jumpToHighBtn.classList.toggle("hidden", hide);
+  jumpToLowBtn.classList.toggle("hidden", hide);
+}
+
+// "Bob mode" is considered ON when all three hands are shown AND the
+// high/low tide predictions are hidden. Keeps the button's active/inactive
+// look in sync no matter how the state got there (bob click, or manually
+// toggling the individual settings checkboxes).
+function isBobModeOn() {
+  return (
+    showHourHandCheckbox.checked &&
+    showMinuteHandCheckbox.checked &&
+    showSecondHandCheckbox.checked &&
+    !showTidePredictionsCheckbox.checked
+  );
+}
+
+function updateBobButtonState() {
+  bobModeBtn.classList.toggle("active", isBobModeOn());
+}
+
 // Find and display next high and low tides
 function updateTidePredictions(now) {
-  if (bobModeBtn.classList.contains("active")) {
+  if (!showTidePredictionsCheckbox.checked) {
     tidePredictionsHighEl.innerHTML = '';
     tidePredictionsLowEl.innerHTML = '';
     return;
@@ -300,6 +330,8 @@ function updateSecondHandCheckboxState() {
 
 // Initial state update
 updateSecondHandCheckboxState();
+updateTidePredictionButtonsVisibility();
+updateBobButtonState();
 
 // Restore intensity preference (0.25 .. 3.0, default 1.0).
 let currentIntensity = parseFloat(localStorage.getItem("particleIntensity")) || 1.0;
@@ -579,6 +611,7 @@ invertTideCheckbox.addEventListener("change", () => {
 showHourHandCheckbox.addEventListener("change", () => {
   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
   updateSecondHandCheckboxState();
+  updateBobButtonState();
   renderFace(); // Re-render face to update gridline label position
   renderHands();
 });
@@ -586,55 +619,56 @@ showHourHandCheckbox.addEventListener("change", () => {
 showMinuteHandCheckbox.addEventListener("change", () => {
   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
   updateSecondHandCheckboxState();
+  updateBobButtonState();
   renderFace(); // Re-render face to update gridline label position
   renderHands();
 });
 
 showSecondHandCheckbox.addEventListener("change", () => {
   localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
+  updateBobButtonState();
   renderHands();
 });
 
-// "Bob mode": turns on all clock hands and turns off the date/time and
-// tide-prediction (high/low) displays, in one click. Toggles back off
-// (restoring previous hand/date-time settings) if clicked again.
-let bobModePrevState = null;
+showTidePredictionsCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
+  updateTidePredictionButtonsVisibility();
+  updateBobButtonState();
+  updateDateTimeDisplayText();
+});
+
+// "Bob mode": one-click toggle.
+// Turning ON: shows hour/minute/second hands, hides the high/low tide
+// predictions (and their seek buttons). Does NOT touch date/time or the
+// transport (rewind/pause/fast-forward) controls.
+// Turning OFF: hides hour/minute/second hands, shows the high/low tide
+// predictions (and their seek buttons) again.
+// "On" vs "off" is derived from actual current state (see isBobModeOn),
+// so this stays correct even if the user toggled the individual settings
+// checkboxes directly instead of using this button.
 bobModeBtn.addEventListener("click", () => {
-  const isBobActive = bobModeBtn.classList.contains("active");
+  const turningOn = !isBobModeOn();
 
-  if (!isBobActive) {
-    // Remember current state so we can restore it when bob mode is turned off.
-    bobModePrevState = {
-      showHourHand: showHourHandCheckbox.checked,
-      showMinuteHand: showMinuteHandCheckbox.checked,
-      showSecondHand: showSecondHandCheckbox.checked,
-      showDateTime: showDateTimeCheckbox.checked,
-    };
-
+  if (turningOn) {
     showHourHandCheckbox.checked = true;
     showMinuteHandCheckbox.checked = true;
     showSecondHandCheckbox.checked = true;
-    showDateTimeCheckbox.checked = false;
-
-    bobModeBtn.classList.add("active");
+    showTidePredictionsCheckbox.checked = false;
   } else {
-    // Restore whatever was set before bob mode was enabled.
-    if (bobModePrevState) {
-      showHourHandCheckbox.checked = bobModePrevState.showHourHand;
-      showMinuteHandCheckbox.checked = bobModePrevState.showMinuteHand;
-      showSecondHandCheckbox.checked = bobModePrevState.showSecondHand;
-      showDateTimeCheckbox.checked = bobModePrevState.showDateTime;
-    }
-    bobModeBtn.classList.remove("active");
+    showHourHandCheckbox.checked = false;
+    showMinuteHandCheckbox.checked = false;
+    showSecondHandCheckbox.checked = false;
+    showTidePredictionsCheckbox.checked = true;
   }
 
   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
   localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
-  localStorage.setItem("showDateTime", showDateTimeCheckbox.checked);
+  localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
 
   updateSecondHandCheckboxState();
-  updateDateTimeDisplay();
+  updateTidePredictionButtonsVisibility();
+  updateBobButtonState();
   renderFace();
   renderHands();
 });

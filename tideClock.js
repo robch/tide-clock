@@ -89,7 +89,7 @@ class TideClock {
     this._drawTideRing(cx, cy, R, visible, hMin, hMax, invert);
 
     // --- Mark local high/low tide points along the visible curve ---
-    this._drawHighLowMarkers(cx, cy, R, visible, hMin, hMax, invert);
+    this._drawHighLowMarkers(cx, cy, R, visible, withDt, hMin, hMax, invert);
 
     // --- Draw fixed clock numerals (12, 1 .. 11) + minute ticks ---
     this._drawNumeralsAndTicks(cx, cy, R);
@@ -110,10 +110,20 @@ class TideClock {
     this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, -6, 0);
     this._drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, 12, 18);
 
-    // --- Draw the "now" indicator hand last (on top of everything) when clock hands are hidden ---
+    // --- Draw the "now" indicator hand (rail track) when clock hands are hidden ---
     if (!showingHands) {
       this._drawNowIndicator(cx, cy, R, now, visible, hMin, hMax, invert);
     }
+
+    // NOTE: the current-tide-height dot is drawn on the HANDS canvas (see
+    // drawHands/_drawCurrentTideDot below), not here on the face canvas.
+    // `clockHands` is a separate <canvas> stacked on top of `clockFace` via
+    // CSS (position: absolute) - draw order *within* this method can never
+    // put anything above the hands, since the hands canvas always
+    // composites on top regardless. So we cache the tide-height inputs
+    // needed to draw the dot, and draw it from drawHands() instead - that
+    // also means it moves with the hands overlay and stays on top of them.
+    this._lastTideDotInputs = { visible, hMin, hMax, invert };
   }
 
   /**
@@ -138,6 +148,19 @@ class TideClock {
 
     ctx.clearRect(0, 0, W, H);
     this._drawHands(cx, cy, R, now, opts);
+
+    // Draw the current-tide-height dot LAST, on top of the hands themselves
+    // (this canvas is stacked above the face canvas, so anything drawn here
+    // is guaranteed to be on top of everything - ring, markers, rail
+    // indicator, AND the hands). Uses the tide data cached by the most
+    // recent drawFace() call; tide height changes slowly enough that being
+    // very slightly stale between face redraws is not noticeable, while
+    // `now` itself is always fresh so the dot's angle stays accurate every
+    // tick. ---
+    if (this._lastTideDotInputs) {
+      const { visible, hMin, hMax, invert } = this._lastTideDotInputs;
+      this._drawCurrentTideDot(ctx, cx, cy, R, now, visible, hMin, hMax, invert);
+    }
   }
 
 
@@ -254,41 +277,74 @@ class TideClock {
     ctx.strokeStyle = "#e8f1f5";
     ctx.lineWidth = borderWidth;
     ctx.stroke();
-    
-    // Find the current tide height at "now" and draw a circle at that point
-    if (visible && visible.length > 0) {
-      // Find the sample closest to "now" (dt closest to 0)
-      const nowSample = visible.reduce((closest, s) => {
-        return Math.abs(s.dt) < Math.abs(closest.dt) ? s : closest;
-      });
-      
-      // Calculate the radius for the current tide height
-      const tideRadius = TideClock.radiusForHeight(R, nowSample.height, hMin, hMax, invert);
-      
-      // Position the circle along the "now" angle at the tide height radius
-      const tideX = cx + tideRadius * Math.sin(nowTheta);
-      const tideY = cy - tideRadius * Math.cos(nowTheta);
-      
-      // Draw filled circle (blue, matching the tide line color)
-      const innerCircleRadius = 5; // Same size as low tide marker
-      ctx.beginPath();
-      ctx.arc(tideX, tideY, innerCircleRadius, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(79, 214, 255, 1)"; // Same as the tide curve line color
-      ctx.fill();
-    }
+  }
+
+  /** Draws the small filled cyan dot marking the current tide height at
+   *  "now", plus a slightly larger hollow ring around it for visibility,
+   *  along the "now" angle. Always drawn - regardless of whether clock
+   *  hands are shown or the hollow "now" rail indicator is shown - and
+   *  drawn onto the HANDS canvas (see drawHands) so it's always on top,
+   *  including on top of the hour/minute/second hands themselves.
+   *  Deliberately does NOT skip drawing when it coincides with a bright
+   *  yellow high/low marker (dt=0 exactly); it's fine for the dot to sit on
+   *  top of that marker's small circle, since the marker's text label is
+   *  offset further out along the same ray and is unaffected.
+   *  `ctx` is passed explicitly since this can be drawn onto either the
+   *  face or hands canvas context. */
+  _drawCurrentTideDot(ctx, cx, cy, R, now, visible, hMin, hMax, invert) {
+    if (!visible || visible.length === 0) return;
+
+    const nowTheta = TideClock.angleForTime(now);
+
+    // Find the sample closest to "now" (dt closest to 0)
+    const nowSample = visible.reduce((closest, s) => {
+      return Math.abs(s.dt) < Math.abs(closest.dt) ? s : closest;
+    });
+
+    // Calculate the radius for the current tide height
+    const tideRadius = TideClock.radiusForHeight(R, nowSample.height, hMin, hMax, invert);
+
+    // Position the circle along the "now" angle at the tide height radius
+    const tideX = cx + tideRadius * Math.sin(nowTheta);
+    const tideY = cy - tideRadius * Math.cos(nowTheta);
+
+    // Outer hollow ring first (so the filled dot sits on top, crisp center).
+    const outerRingRadius = 9;
+    ctx.beginPath();
+    ctx.arc(tideX, tideY, outerRingRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(79, 214, 255, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw filled circle (blue, matching the tide line color)
+    const innerCircleRadius = 5; // Same size as low tide marker
+    ctx.beginPath();
+    ctx.arc(tideX, tideY, innerCircleRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(79, 214, 255, 1)"; // Same as the tide curve line color
+    ctx.fill();
   }
 
 
   /** Finds local high/low tide extrema within the visible samples and draws
-   *  a marker dot (plus small height label) at each one. */
-  _drawHighLowMarkers(cx, cy, R, visible, hMin, hMax, invert = false) {
+   *  a marker dot (plus small height label) at each one.
+   *
+   *  IMPORTANT: neighbor lookups use the FULL `withDt` dataset (not just
+   *  `visible`), so the very first/last entries of `visible` (dt===0 or
+   *  dt===12) can still be correctly classified as a high/low extremum by
+   *  looking just outside the clipped window. Without this, a tide peak
+   *  that lands exactly at "now" (e.g. right after seeking forward to it,
+   *  since simulatedTime is set to the target's exact timestamp) would sit
+   *  at visible[0] and - if the loop only ever compared interior points -
+   *  would never be evaluated as `cur`, silently never getting a marker. */
+  _drawHighLowMarkers(cx, cy, R, visible, withDt, hMin, hMax, invert = false) {
     const ctx = this.faceCtx;
-    if (visible.length < 3) return;
+    if (visible.length < 1) return;
 
-    for (let i = 1; i < visible.length - 1; i++) {
-      const prev = visible[i - 1];
+    for (let i = 0; i < visible.length; i++) {
       const cur = visible[i];
-      const next = visible[i + 1];
+      const prev = i > 0 ? visible[i - 1] : TideClock.nearestBefore(withDt, cur.dt);
+      const next = i < visible.length - 1 ? visible[i + 1] : TideClock.nearestAfter(withDt, cur.dt);
+      if (!prev || !next) continue;
 
       const isHigh = cur.height >= prev.height && cur.height >= next.height;
       const isLow = cur.height <= prev.height && cur.height <= next.height;
@@ -353,15 +409,22 @@ class TideClock {
   _drawDimHighLowMarkers(cx, cy, R, withDt, hMin, hMax, invert, dtLo, dtHi) {
     const ctx = this.faceCtx;
 
-    let segment = withDt.filter((s) => s.dt >= dtLo && s.dt <= dtHi);
+    // The shared boundary with the main 12h window (dt=0 for the past
+    // segment, dt=12 for the future segment) is excluded here - that exact
+    // sample already gets a bright yellow marker+label from
+    // `_drawHighLowMarkers`, and since this dim version is drawn later (on
+    // top), an inclusive boundary would silently overwrite that bright
+    // label with a duller gray one at the identical (x,y) whenever a hi/lo
+    // tide happens to land precisely on "now" (e.g. right after seeking to
+    // it) or precisely on "now + 12h".
+    const isPast = dtHi <= 0; // past segment fades toward dtLo; future fades toward dtHi.
+    let segment = withDt.filter((s) => (isPast ? s.dt >= dtLo && s.dt < dtHi : s.dt > dtLo && s.dt <= dtHi));
     const startBoundary = TideClock.interpolateAt(withDt, dtLo);
     const endBoundary = TideClock.interpolateAt(withDt, dtHi);
-    if (startBoundary && (!segment.length || segment[0].dt > dtLo)) segment.unshift(startBoundary);
-    if (endBoundary && (!segment.length || segment[segment.length - 1].dt < dtHi)) segment.push(endBoundary);
+    if (!isPast && startBoundary && (!segment.length || segment[0].dt > dtLo)) segment.unshift(startBoundary);
+    if (isPast && endBoundary && (!segment.length || segment[segment.length - 1].dt < dtHi)) segment.push(endBoundary);
 
     if (segment.length < 3) return;
-
-    const isPast = dtHi <= 0; // past segment fades toward dtLo; future fades toward dtHi.
     const span = dtHi - dtLo;
     const MAX_ALPHA = 0.85;
     const color = "rgba(150, 150, 155,"; // same base color as the trace lines.
@@ -776,6 +839,24 @@ class TideClock {
   /** Hours between two Date objects (b - a), as a decimal. */
   static hoursBetween(a, b) {
     return (b.getTime() - a.getTime()) / (3600 * 1000);
+  }
+
+  /** Nearest real sample strictly before the given dt (largest dt < targetDt). */
+  static nearestBefore(withDt, targetDt) {
+    let best = null;
+    for (const s of withDt) {
+      if (s.dt < targetDt && (!best || s.dt > best.dt)) best = s;
+    }
+    return best;
+  }
+
+  /** Nearest real sample strictly after the given dt (smallest dt > targetDt). */
+  static nearestAfter(withDt, targetDt) {
+    let best = null;
+    for (const s of withDt) {
+      if (s.dt > targetDt && (!best || s.dt < best.dt)) best = s;
+    }
+    return best;
   }
 
   /** Given samples with a `.dt` field (hours relative to "now"), linearly

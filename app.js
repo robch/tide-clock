@@ -65,6 +65,9 @@ const jumpToLowBtn = document.getElementById("jumpToLowBtn");
 let redrawTimer = null;
 let currentSamples = null;
 let currentHeightRange = { hMin: -2, hMax: 10 };
+// Observer location used by Astronomy Engine for the Moon marker. It follows
+// the selected tide station so the sky reference and tide data share a place.
+let observerLocation = null;
 
 // Time simulation state
 let simulatedTime = null; // null = use real time, Date object = simulated time
@@ -360,14 +363,20 @@ function computeHeightRange(samples) {
   return { hMin, hMax };
 }
 
+async function fetchStation(stationId) {
+  const url = `https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/${stationId}.json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Station metadata error: ${res.status}`);
+  const json = await res.json();
+  const station = json.stations && json.stations[0];
+  if (!station) throw new Error(`Station ${stationId} was not found.`);
+  return station;
+}
+
 async function fetchStationName(stationId) {
   try {
-    const url = `https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/${stationId}.json`;
-    const res = await fetch(url);
-    if (!res.ok) return stationId;
-    const json = await res.json();
-    const st = json.stations && json.stations[0];
-    return st ? `${st.name}, ${st.state}` : stationId;
+    const station = await fetchStation(stationId);
+    return `${station.name}, ${station.state}`;
   } catch (e) {
     return stationId;
   }
@@ -464,6 +473,8 @@ async function usePlace() {
         setStatus(`Trying station ${candidate.id} (${candidate.distanceKm.toFixed(0)} km away)...`);
         const samples = await fetchTidePredictions(candidate.id);
         stationIdInput.value = candidate.id;
+        observerLocation = { latitude: Number(candidate.lat), longitude: Number(candidate.lng) };
+
         stationNameEl.textContent =
           `${candidate.name}, ${candidate.state ?? ""} (${candidate.distanceKm.toFixed(0)} km away)`;
         currentSamples = samples;
@@ -523,6 +534,8 @@ async function useMyLocation() {
         setStatus(`Trying station ${candidate.id} (${candidate.distanceKm.toFixed(0)} km away)...`);
         const samples = await fetchTidePredictions(candidate.id);
         stationIdInput.value = candidate.id;
+        observerLocation = { latitude: Number(candidate.lat), longitude: Number(candidate.lng) };
+
         stationNameEl.textContent =
           `${candidate.name}, ${candidate.state ?? ""} (${candidate.distanceKm.toFixed(0)} km away)`;
         currentSamples = samples;
@@ -650,7 +663,7 @@ function renderHands() {
     showMinuteHand: showMinuteHandCheckbox.checked,
     showSecondHand: showSecondHandCheckbox.checked,
   };
-  tideClock.drawHands(getCurrentTime(), opts);
+  tideClock.drawHands(getCurrentTime(), opts, observerLocation);
 }
 
 async function loadTides() {
@@ -664,12 +677,13 @@ async function loadTides() {
   setStatus("Loading tide data...");
 
   try {
-    const [name, samples] = await Promise.all([
-      fetchStationName(stationId),
+    const [station, samples] = await Promise.all([
+      fetchStation(stationId),
       fetchTidePredictions(stationId),
     ]);
 
-    stationNameEl.textContent = name;
+    observerLocation = { latitude: Number(station.lat), longitude: Number(station.lng) };
+    stationNameEl.textContent = `${station.name}, ${station.state}`;
     currentSamples = samples;
     currentHeightRange = computeHeightRange(samples);
     renderFace();

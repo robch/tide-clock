@@ -327,7 +327,7 @@ class TideClock {
       return;
     }
 
-    const theta = TideClock.angleForTime(now) + (moonOffsetHours * Math.PI) / 6;
+    const theta = TideClock.angleForTime(now) - (moonOffsetHours * Math.PI) / 6;
     const moonRadius = R * 1.10;
     const moonX = cx + moonRadius * Math.sin(theta);
     const moonY = cy - moonRadius * Math.cos(theta);
@@ -478,7 +478,7 @@ class TideClock {
       return;
     }
 
-    const theta = TideClock.angleForTime(now) + (sunOffsetHours * Math.PI) / 6;
+    const theta = TideClock.angleForTime(now) - (sunOffsetHours * Math.PI) / 6;
     const sunRadius = R * 1.16; // slightly further out than the Moon's orbit
     const sunX = cx + sunRadius * Math.sin(theta);
     const sunY = cy - sunRadius * Math.cos(theta);

@@ -136,9 +136,11 @@ class TideClock {
    * @param {boolean} [opts.showHourHand] - whether to draw the hour hand
    * @param {boolean} [opts.showMinuteHand] - whether to draw the minute hand
    * @param {boolean} [opts.showSecondHand] - whether to draw the second hand
-   * @param {{latitude: number, longitude: number}} [observer] - selected local location
+   * @param {number|null} [moonOffsetHours] - precomputed Moon clock-offset
+   *   in hours (0 = transit/aligned with hour hand, +/- = before/after),
+   *   from app.js's moonOffsetHoursAt(); null/omitted skips drawing the Moon
    */
-  drawHands(now, opts = {}, observer = null) {
+  drawHands(now, opts = {}, moonOffsetHours = null) {
     const ctx = this.handsCtx;
     const canvas = this.handsCanvas;
     const W = canvas.width;
@@ -150,9 +152,10 @@ class TideClock {
     ctx.clearRect(0, 0, W, H);
     this._drawHands(cx, cy, R, now, opts);
 
-    // Draw the Moon as a separate fixed-radius object outside the clock rim.
-    // Its local hour-angle position uses `now`, so simulated time works too.
-    this._drawMoon(cx, cy, R, now, observer);
+    // Draw the Moon as a separate fixed-radius object outside the clock rim,
+    // using the precomputed offset (see moonOffsetHoursAt in app.js) so this
+    // works identically in real time and in simulated/animated time.
+    this._drawMoon(cx, cy, R, now, moonOffsetHours);
 
     // Draw the current-tide-height dot LAST, on top of the hands themselves
     // (this canvas is stacked above the face canvas, so anything drawn here
@@ -283,56 +286,38 @@ class TideClock {
     ctx.lineWidth = borderWidth;
     ctx.stroke();
   }
-  /** Draws the Moon on a constant-radius outer orbit. The orbit angle is the
-   * local lunar hour angle relative to the hour-hand direction: at lunar
-   * transit the Moon aligns with the hour hand, while negative/positive hour
-   * angles place it behind/ahead (rise/set are approximately -/+90 degrees).
-   * Astronomy Engine is loaded by index.html; without an observer or library,
-   * the rest of the clock continues to work normally. */
-  _drawMoon(cx, cy, R, now, observer) {
-    if (!observer || !window.Astronomy) return;
-    const latitude = Number(observer.latitude);
-    const longitude = Number(observer.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-
-    try {
-      const astroObserver = new Astronomy.Observer(latitude, longitude, 0);
-      const equator = Astronomy.Equator("Moon", now, astroObserver, true, true);
-      const localSiderealHours = Astronomy.SiderealTime(now) + longitude / 15;
-      let hourAngleHours = localSiderealHours - equator.ra;
-      hourAngleHours = ((hourAngleHours + 12) % 24) - 12;
-
-      // 15 degrees per hour; the hour hand itself is the zero-angle reference.
-      // Compress the visible sky's -6h..+6h hour-angle span into the
-      // requested -3h..+3h orbit span: rise is three clock hours behind,
-      // transit aligns with the hour hand, and set is three hours ahead.
-      const theta = TideClock.angleForTime(now) + (hourAngleHours * Math.PI) / 24;
-      const moonRadius = R * 1.10;
-      const moonX = cx + moonRadius * Math.sin(theta);
-      const moonY = cy - moonRadius * Math.cos(theta);
-      const ctx = this.handsCtx;
-
-      ctx.save();
-      ctx.shadowColor = "rgba(220, 232, 238, 0.75)";
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
-      ctx.fillStyle = "#d8e1e4";
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Fixed surface marks make this read as a Moon object without phase yet.
-      ctx.fillStyle = "rgba(94, 111, 118, 0.42)";
-      for (const crater of [[-4, -3, 2.2], [4, 2, 2.8], [-1, 5, 1.5]]) {
-        ctx.beginPath();
-        ctx.arc(moonX + crater[0], moonY + crater[1], crater[2], 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    } catch (error) {
-      // A missing/unsupported astronomy calculation must not disable the clock.
-      console.warn("Moon position unavailable:", error);
+  /** Draws the Moon on a constant-radius outer orbit. `moonOffsetHours` is a
+   * precomputed value (see app.js: computeMoonAnchors/moonOffsetHoursAt) in
+   * clock-hours relative to the hour hand: 0 = lunar transit (aligned with
+   * hour hand), negative = before transit/rising side, positive = after
+   * transit/setting side. Pass null/undefined to skip drawing (e.g. no
+   * station/location selected yet, or anchors not yet computed). */
+  _drawMoon(cx, cy, R, now, moonOffsetHours) {
+    if (moonOffsetHours === null || moonOffsetHours === undefined || !Number.isFinite(moonOffsetHours)) {
+      return;
     }
+
+    const theta = TideClock.angleForTime(now) + (moonOffsetHours * Math.PI) / 6;
+    const moonRadius = R * 1.10;
+    const moonX = cx + moonRadius * Math.sin(theta);
+    const moonY = cy - moonRadius * Math.cos(theta);
+    const ctx = this.handsCtx;
+
+    ctx.save();
+    ctx.shadowColor = "rgba(220, 232, 238, 0.75)";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
+    ctx.fillStyle = "#d8e1e4";
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(94, 111, 118, 0.42)";
+    for (const crater of [[-4, -3, 2.2], [4, 2, 2.8], [-1, 5, 1.5]]) {
+      ctx.beginPath();
+      ctx.arc(moonX + crater[0], moonY + crater[1], crater[2], 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
 

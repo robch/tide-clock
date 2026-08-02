@@ -51,6 +51,7 @@ const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
 const showSecondHandCheckbox = document.getElementById("showSecondHand");
 const showSunCheckbox = document.getElementById("showSun");
 const showMoonCheckbox = document.getElementById("showMoon");
+const showSkyCheckbox = document.getElementById("showSky");
 const showDateTimeCheckbox = document.getElementById("showDateTime");
 const showTidePredictionsCheckbox = document.getElementById("showTidePredictions");
 const bobModeBtn = document.getElementById("bobModeBtn");
@@ -94,6 +95,7 @@ showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "tru
 // Sun/Moon default OFF (opt-in), matching the hands' default-hidden behavior.
 showSunCheckbox.checked = localStorage.getItem("showSun") === "true";
 showMoonCheckbox.checked = localStorage.getItem("showMoon") === "true";
+showSkyCheckbox.checked = localStorage.getItem("showSky") === "true";
 
 // Restore date/time display preference from localStorage.
 showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
@@ -231,7 +233,8 @@ function isBobModeOn() {
     showSecondHandCheckbox.checked &&
     !showTidePredictionsCheckbox.checked &&
     !showSunCheckbox.checked &&
-    !showMoonCheckbox.checked
+    !showMoonCheckbox.checked &&
+    !showSkyCheckbox.checked
   );
 }
 
@@ -825,7 +828,18 @@ function renderHands() {
   const moonOffsetHours = showMoonCheckbox.checked ? bodyOffsetHoursAt(moonAnchors, now) : null;
   const sunOffsetHours = showSunCheckbox.checked ? bodyOffsetHoursAt(sunAnchors, now) : null;
   const moonPhaseAngle = showMoonCheckbox.checked ? moonPhaseAngleAt(now) : null;
-  tideClock.drawHands(now, opts, { moonOffsetHours, sunOffsetHours, moonPhaseAngle });
+
+  // Day/night for the sky wedge is computed from the Sun anchors regardless
+  // of whether the Sun marker itself is shown - by construction (see
+  // computeBodyAnchors), the Sun is above the horizon exactly when its
+  // offset falls within [-3, +3] clock-hours (rise..set).
+  let isDaytime = null;
+  if (showSkyCheckbox.checked) {
+    const rawSunOffsetHours = bodyOffsetHoursAt(sunAnchors, now);
+    isDaytime = rawSunOffsetHours !== null ? rawSunOffsetHours >= -3 && rawSunOffsetHours <= 3 : null;
+  }
+
+  tideClock.drawHands(now, opts, { moonOffsetHours, sunOffsetHours, moonPhaseAngle, isDaytime });
 }
 
 async function loadTides() {
@@ -902,6 +916,12 @@ showMoonCheckbox.addEventListener("change", () => {
   renderHands();
 });
 
+showSkyCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showSky", showSkyCheckbox.checked);
+  updateBobButtonState();
+  renderHands();
+});
+
 showTidePredictionsCheckbox.addEventListener("change", () => {
   localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
   updateTidePredictionButtonsVisibility();
@@ -932,10 +952,11 @@ bobModeBtn.addEventListener("click", () => {
     showSecondHandCheckbox.checked = false;
     showTidePredictionsCheckbox.checked = true;
   }
-  // Bob mode is a minimalist clock-hands-only look; Sun/Moon are always
+  // Bob mode is a minimalist clock-hands-only look; Sun/Moon/sky are always
   // off in bob mode (both when turning it on and when turning it off).
   showSunCheckbox.checked = false;
   showMoonCheckbox.checked = false;
+  showSkyCheckbox.checked = false;
 
   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
@@ -943,6 +964,7 @@ bobModeBtn.addEventListener("click", () => {
   localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
   localStorage.setItem("showSun", "false");
   localStorage.setItem("showMoon", "false");
+  localStorage.setItem("showSky", "false");
 
   updateSecondHandCheckboxState();
   updateTidePredictionButtonsVisibility();

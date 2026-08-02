@@ -145,12 +145,17 @@ class TideClock {
    * @param {number|null} [bodies.moonPhaseAngle] - Moon phase in degrees
    *   (0=new, 90=first quarter, 180=full, 270=last quarter), from
    *   moonPhaseAngleAt(); null draws the Moon without phase shading
+   * @param {boolean|null} [bodies.isDaytime] - whether the Sun is currently
+   *   above the horizon (from app.js, using the same Sun anchors as the Sun
+   *   marker, but independent of whether that marker is shown); drives the
+   *   sky wedge's day/night fill. Pass null to skip the wedge entirely.
    */
   drawHands(now, opts = {}, bodies = {}) {
     const {
       moonOffsetHours = null,
       sunOffsetHours = null,
       moonPhaseAngle = null,
+      isDaytime = null,
     } = bodies;
     const ctx = this.handsCtx;
     const canvas = this.handsCanvas;
@@ -161,6 +166,13 @@ class TideClock {
     const R = Math.min(W, H) * 0.38;
 
     ctx.clearRect(0, 0, W, H);
+
+    // Draw the sky wedge FIRST/underneath everything else on this canvas:
+    // a half-ring "visible sky" band just outside the clock rim, spanning
+    // horizon-to-horizon (-3h..+3h from the hour hand, matching the Sun/
+    // Moon rise/set convention), tinted for day or night.
+    this._drawSkyWedge(cx, cy, R, now, isDaytime);
+
     this._drawHands(cx, cy, R, now, opts);
 
     // Draw the Sun and Moon as separate fixed-radius objects outside the
@@ -376,6 +388,74 @@ class TideClock {
     ctx.closePath();
     ctx.fillStyle = "#d8e1e4";
     ctx.fill();
+    ctx.restore();
+  }
+
+  /** Draws the "visible sky" wedge: a half-ring band just outside the clock
+   * rim, spanning from -3h to +3h relative to the hour hand (i.e. the same
+   * horizon convention used for Sun/Moon rise=-3h/set=+3h), so its straight
+   * edges represent the observer's horizon in both directions and its outer
+   * arc sweeps through the point directly overhead. Tinted light blue for
+   * daytime or dark gray with a static starfield for nighttime, based on
+   * `isDaytime` (see app.js: Sun anchors, independent of the Sun marker's
+   * own visibility toggle). Pass null to skip drawing entirely. */
+  _drawSkyWedge(cx, cy, R, now, isDaytime) {
+    if (isDaytime === null || isDaytime === undefined) return;
+
+    const ctx = this.handsCtx;
+    const innerR = R * 1.01; // just outside the clock rim
+    const outerR = R * 1.30; // just past the Sun's orbit (R * 1.16)
+
+    // TideClock.angleForTime() uses x = cx + r*sin(theta), y = cy - r*cos(theta);
+    // this is equivalent to the standard canvas-arc angle a = theta - PI/2. The
+    // -3h/+3h span (a full half-turn) is unaffected by that fixed rotation, so
+    // we can convert once here and reuse the existing rail-drawing convention
+    // (see _drawNowIndicator, which also uses nowTheta directly in ctx.arc).
+    const hourTheta = TideClock.angleForTime(now);
+    const startAngle = hourTheta - Math.PI / 2 - Math.PI / 2; // -3h, in canvas-arc terms
+    const endAngle = hourTheta + Math.PI / 2 - Math.PI / 2; // +3h, in canvas-arc terms
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, startAngle, endAngle, false);
+    ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+    ctx.closePath();
+    ctx.clip();
+
+    if (isDaytime) {
+      ctx.fillStyle = "rgba(135, 206, 250, 0.28)";
+      ctx.fillRect(cx - outerR, cy - outerR, outerR * 2, outerR * 2);
+    } else {
+      ctx.fillStyle = "rgba(48, 52, 60, 0.55)";
+      ctx.fillRect(cx - outerR, cy - outerR, outerR * 2, outerR * 2);
+
+      // Static starfield: generated once and cached, so stars don't jitter
+      // or re-randomize on every frame.
+      if (!this._skyStars) {
+        this._skyStars = [];
+        for (let i = 0; i < 60; i++) {
+          this._skyStars.push({
+            angleFrac: Math.random(), // 0..1 across the full -3h..+3h span
+            radiusFrac: 0.15 + Math.random() * 0.8, // 0..1 between innerR/outerR
+            size: 0.6 + Math.random() * 1.2,
+            alpha: 0.35 + Math.random() * 0.5,
+          });
+        }
+      }
+      ctx.fillStyle = "#f4f7fa";
+      for (const star of this._skyStars) {
+        const a = startAngle + star.angleFrac * (endAngle - startAngle);
+        const r = innerR + star.radiusFrac * (outerR - innerR);
+        const sx = cx + r * Math.cos(a);
+        const sy = cy + r * Math.sin(a);
+        ctx.globalAlpha = star.alpha;
+        ctx.beginPath();
+        ctx.arc(sx, sy, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     ctx.restore();
   }
 

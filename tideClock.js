@@ -423,7 +423,16 @@ class TideClock {
     ctx.clip();
 
     if (isDaytime) {
-      ctx.fillStyle = "rgba(135, 206, 250, 0.28)";
+      // A radial gradient (centered on the clock, from innerR to outerR)
+      // gives the band some atmospheric depth instead of a flat tint: a
+      // paler, hazier blue near the clock rim, deepening to a richer sky
+      // blue toward the outer edge. Much higher opacity than before so the
+      // color actually reads as "sky" rather than being washed out by the
+      // dark UI background showing through.
+      const gradient = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+      gradient.addColorStop(0, "rgba(191, 224, 245, 0.92)");
+      gradient.addColorStop(1, "rgba(58, 145, 214, 0.96)");
+      ctx.fillStyle = gradient;
       ctx.fillRect(cx - outerR, cy - outerR, outerR * 2, outerR * 2);
     } else {
       ctx.fillStyle = "rgba(48, 52, 60, 0.55)";

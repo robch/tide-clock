@@ -49,6 +49,8 @@ const particleModeSelect = document.getElementById("particleMode");
 const showHourHandCheckbox = document.getElementById("showHourHand");
 const showMinuteHandCheckbox = document.getElementById("showMinuteHand");
 const showSecondHandCheckbox = document.getElementById("showSecondHand");
+const showSunCheckbox = document.getElementById("showSun");
+const showMoonCheckbox = document.getElementById("showMoon");
 const showDateTimeCheckbox = document.getElementById("showDateTime");
 const showTidePredictionsCheckbox = document.getElementById("showTidePredictions");
 const bobModeBtn = document.getElementById("bobModeBtn");
@@ -68,10 +70,12 @@ let currentHeightRange = { hMin: -2, hMax: 10 };
 // Observer location used by Astronomy Engine for the Moon marker. It follows
 // the selected tide station so the sky reference and tide data share a place.
 let observerLocation = null;
-// Precomputed Moon rise/transit/set anchors for the same 28-day window as
-// tide predictions (see getDataDateRange/computeMoonAnchors). Looked up via
-// moonOffsetHoursAt() for any instant, in real time or simulated/animated.
+// Precomputed Moon and Sun rise/transit/set anchors for the same 28-day
+// window as tide predictions (see getDataDateRange/computeBodyAnchors).
+// Looked up via bodyOffsetHoursAt() for any instant, in real time or
+// simulated/animated time.
 let moonAnchors = [];
+let sunAnchors = [];
 
 // Time simulation state
 let simulatedTime = null; // null = use real time, Date object = simulated time
@@ -87,6 +91,9 @@ invertTideCheckbox.checked = localStorage.getItem("invertTide") === "true";
 showHourHandCheckbox.checked = localStorage.getItem("showHourHand") === "true";
 showMinuteHandCheckbox.checked = localStorage.getItem("showMinuteHand") === "true";
 showSecondHandCheckbox.checked = localStorage.getItem("showSecondHand") === "true";
+// Sun/Moon default OFF (opt-in), matching the hands' default-hidden behavior.
+showSunCheckbox.checked = localStorage.getItem("showSun") === "true";
+showMoonCheckbox.checked = localStorage.getItem("showMoon") === "true";
 
 // Restore date/time display preference from localStorage.
 showDateTimeCheckbox.checked = localStorage.getItem("showDateTime") !== "false"; // default true
@@ -222,7 +229,9 @@ function isBobModeOn() {
     showHourHandCheckbox.checked &&
     showMinuteHandCheckbox.checked &&
     showSecondHandCheckbox.checked &&
-    !showTidePredictionsCheckbox.checked
+    !showTidePredictionsCheckbox.checked &&
+    !showSunCheckbox.checked &&
+    !showMoonCheckbox.checked
   );
 }
 
@@ -478,7 +487,7 @@ async function usePlace() {
         const samples = await fetchTidePredictions(candidate.id);
         stationIdInput.value = candidate.id;
         observerLocation = { latitude: Number(candidate.lat), longitude: Number(candidate.lng) };
-        refreshMoonAnchors();
+        refreshBodyAnchors();
 
         stationNameEl.textContent =
           `${candidate.name}, ${candidate.state ?? ""} (${candidate.distanceKm.toFixed(0)} km away)`;
@@ -540,7 +549,7 @@ async function useMyLocation() {
         const samples = await fetchTidePredictions(candidate.id);
         stationIdInput.value = candidate.id;
         observerLocation = { latitude: Number(candidate.lat), longitude: Number(candidate.lng) };
-        refreshMoonAnchors();
+        refreshBodyAnchors();
 
         stationNameEl.textContent =
           `${candidate.name}, ${candidate.state ?? ""} (${candidate.distanceKm.toFixed(0)} km away)`;
@@ -643,23 +652,28 @@ async function fetchTidePredictions(stationId) {
 }
 
 /**
- * Precomputes Moon rise/transit/set anchors across the same 28-day window
- * used for tide predictions (see getDataDateRange), so the Moon marker can
- * be positioned for ANY instant in that range via cheap interpolation -
- * whether running in real time or animating forward/backward at any speed.
+ * Precomputes rise/transit/set anchors for a celestial body (e.g. "Moon" or
+ * "Sun") across the same 28-day window used for tide predictions (see
+ * getDataDateRange), so its marker can be positioned for ANY instant in that
+ * range via cheap interpolation - whether running in real time or animating
+ * forward/backward at any speed.
  *
  * Each anchor gets an "offset" value in clock-hours on a running (unwrapped)
  * timeline: rise -> transit is +3h, transit -> set is +3h, set -> next rise
  * is +6h (continuing to increase monotonically so interpolation never has
- * to handle wraparound). moonOffsetHoursAt() normalizes the interpolated
+ * to handle wraparound). bodyOffsetHoursAt() normalizes the interpolated
  * value back into (-6, +6] before use.
  *
  * This uses Astronomy Engine's own SearchRiseSet/SearchHourAngle, which are
  * exact for the given latitude/longitude (unlike a fixed "hour angle / 2"
  * shortcut, which silently assumes rise/set always fall exactly 6 sidereal
  * hours from transit - not generally true away from the equator).
+ *
+ * For the Sun, "transit" is solar noon - the hour hand's original meaning
+ * (this is literally why sundials work), so sunrise = -3h, solar noon = 0h
+ * (aligned with the hour hand), sunset = +3h.
  */
-function computeMoonAnchors(observer, begin, end) {
+function computeBodyAnchors(bodyName, observer, begin, end) {
   const Astronomy = globalThis.Astronomy;
   if (!Astronomy || !observer) return [];
   const { latitude, longitude } = observer;
@@ -674,9 +688,9 @@ function computeMoonAnchors(observer, begin, end) {
 
   while (t < end && guard < 500) {
     guard++;
-    const rise = Astronomy.SearchRiseSet("Moon", astroObserver, +1, t, 1.5);
-    const set = Astronomy.SearchRiseSet("Moon", astroObserver, -1, t, 1.5);
-    const transitSearch = Astronomy.SearchHourAngle("Moon", astroObserver, 0, t, 1.5);
+    const rise = Astronomy.SearchRiseSet(bodyName, astroObserver, +1, t, 1.5);
+    const set = Astronomy.SearchRiseSet(bodyName, astroObserver, -1, t, 1.5);
+    const transitSearch = Astronomy.SearchHourAngle(bodyName, astroObserver, 0, t, 1.5);
     const transit = transitSearch && transitSearch.time.date > t ? transitSearch.time.date : null;
 
     const candidates = [
@@ -705,12 +719,13 @@ function computeMoonAnchors(observer, begin, end) {
 }
 
 /**
- * Looks up the interpolated Moon clock-offset (in hours, normalized to
- * (-6, +6]) for any instant within the precomputed anchors range. Returns
- * null if `now` falls outside the computed range or anchors are unavailable
- * (e.g. Astronomy Engine failed to load, or no station is selected yet).
+ * Looks up the interpolated clock-offset (in hours, normalized to (-6, +6])
+ * for a body's precomputed anchors, for any instant within their range.
+ * Returns null if `now` falls outside the computed range or anchors are
+ * unavailable (e.g. Astronomy Engine failed to load, or no station is
+ * selected yet).
  */
-function moonOffsetHoursAt(anchors, now) {
+function bodyOffsetHoursAt(anchors, now) {
   if (!anchors || anchors.length < 2) return null;
   // Anchors are sorted by time; find the first one after `now`.
   let i = anchors.findIndex((a) => a.time > now);
@@ -720,6 +735,26 @@ function moonOffsetHoursAt(anchors, now) {
   const frac = (now - a.time) / (b.time - a.time);
   const raw = a.offset + frac * (b.offset - a.offset);
   return (((raw + 6) % 12) + 12) % 12 - 6;
+}
+
+/**
+ * Returns the Moon's current phase angle in degrees (0..360), a pure
+ * function of date - no observer/location needed:
+ *   0   = new moon
+ *   90  = first quarter
+ *   180 = full moon
+ *   270 = last quarter
+ * Returns null if Astronomy Engine isn't loaded.
+ */
+function moonPhaseAngleAt(now) {
+  const Astronomy = globalThis.Astronomy;
+  if (!Astronomy) return null;
+  try {
+    return Astronomy.MoonPhase(now);
+  } catch (e) {
+    console.warn("[Moon] phase calculation failed:", e);
+    return null;
+  }
 }
 
 function setStatus(text, isError = false) {
@@ -754,24 +789,30 @@ function renderFace() {
 }
 
 /**
- * Computes Moon anchors for the current observerLocation across the shared
- * 28-day data window, stores them in moonAnchors, and logs the anchors that
- * fall within +/- 1 day of today so they can be sanity-checked against known
- * moonrise/set times for the location (the same way NOAA hi/lo tide times
- * can be checked against a tide table).
+ * Computes Moon and Sun anchors for the current observerLocation across the
+ * shared 28-day data window, stores them in moonAnchors/sunAnchors, and logs
+ * the anchors that fall within +/- 1 day of today so they can be
+ * sanity-checked against known sunrise/sunset/moonrise/moonset times for the
+ * location (the same way NOAA hi/lo tide times can be checked against a
+ * tide table).
  */
-function refreshMoonAnchors() {
+function refreshBodyAnchors() {
   const { begin, end } = getDataDateRange();
-  moonAnchors = computeMoonAnchors(observerLocation, begin, end);
   const today = new Date();
   const windowStart = new Date(today.getTime() - 86400000);
   const windowEnd = new Date(today.getTime() + 86400000);
-  const nearby = moonAnchors.filter((a) => a.time > windowStart && a.time < windowEnd);
-  console.log(
-    `[Moon] computed ${moonAnchors.length} anchors for ${begin.toDateString()} - ${end.toDateString()} ` +
-      `at (${observerLocation?.latitude}, ${observerLocation?.longitude}); anchors near today:`,
-    nearby.map((a) => `${a.kind} ${a.time.toLocaleString()} (offset=${a.offset.toFixed(2)}h)`)
-  );
+
+  moonAnchors = computeBodyAnchors("Moon", observerLocation, begin, end);
+  sunAnchors = computeBodyAnchors("Sun", observerLocation, begin, end);
+
+  for (const [label, anchors] of [["Moon", moonAnchors], ["Sun", sunAnchors]]) {
+    const nearby = anchors.filter((a) => a.time > windowStart && a.time < windowEnd);
+    console.log(
+      `[${label}] computed ${anchors.length} anchors for ${begin.toDateString()} - ${end.toDateString()} ` +
+        `at (${observerLocation?.latitude}, ${observerLocation?.longitude}); anchors near today:`,
+      nearby.map((a) => `${a.kind} ${a.time.toLocaleString()} (offset=${a.offset.toFixed(2)}h)`)
+    );
+  }
 }
 
 function renderHands() {
@@ -780,8 +821,11 @@ function renderHands() {
     showMinuteHand: showMinuteHandCheckbox.checked,
     showSecondHand: showSecondHandCheckbox.checked,
   };
-  const moonOffsetHours = moonOffsetHoursAt(moonAnchors, getCurrentTime());
-  tideClock.drawHands(getCurrentTime(), opts, moonOffsetHours);
+  const now = getCurrentTime();
+  const moonOffsetHours = showMoonCheckbox.checked ? bodyOffsetHoursAt(moonAnchors, now) : null;
+  const sunOffsetHours = showSunCheckbox.checked ? bodyOffsetHoursAt(sunAnchors, now) : null;
+  const moonPhaseAngle = showMoonCheckbox.checked ? moonPhaseAngleAt(now) : null;
+  tideClock.drawHands(now, opts, { moonOffsetHours, sunOffsetHours, moonPhaseAngle });
 }
 
 async function loadTides() {
@@ -801,7 +845,7 @@ async function loadTides() {
     ]);
 
     observerLocation = { latitude: Number(station.lat), longitude: Number(station.lng) };
-    refreshMoonAnchors();
+    refreshBodyAnchors();
     stationNameEl.textContent = `${station.name}, ${station.state}`;
     currentSamples = samples;
     currentHeightRange = computeHeightRange(samples);
@@ -846,6 +890,18 @@ showSecondHandCheckbox.addEventListener("change", () => {
   renderHands();
 });
 
+showSunCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showSun", showSunCheckbox.checked);
+  updateBobButtonState();
+  renderHands();
+});
+
+showMoonCheckbox.addEventListener("change", () => {
+  localStorage.setItem("showMoon", showMoonCheckbox.checked);
+  updateBobButtonState();
+  renderHands();
+});
+
 showTidePredictionsCheckbox.addEventListener("change", () => {
   localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
   updateTidePredictionButtonsVisibility();
@@ -876,11 +932,17 @@ bobModeBtn.addEventListener("click", () => {
     showSecondHandCheckbox.checked = false;
     showTidePredictionsCheckbox.checked = true;
   }
+  // Bob mode is a minimalist clock-hands-only look; Sun/Moon are always
+  // off in bob mode (both when turning it on and when turning it off).
+  showSunCheckbox.checked = false;
+  showMoonCheckbox.checked = false;
 
   localStorage.setItem("showHourHand", showHourHandCheckbox.checked);
   localStorage.setItem("showMinuteHand", showMinuteHandCheckbox.checked);
   localStorage.setItem("showSecondHand", showSecondHandCheckbox.checked);
   localStorage.setItem("showTidePredictions", showTidePredictionsCheckbox.checked);
+  localStorage.setItem("showSun", "false");
+  localStorage.setItem("showMoon", "false");
 
   updateSecondHandCheckboxState();
   updateTidePredictionButtonsVisibility();

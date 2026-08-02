@@ -68,6 +68,14 @@
           Show second hand
         </label>
         <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showSun" type="checkbox" style="width: auto;" />
+          Show Sun
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
+          <input id="showMoon" type="checkbox" style="width: auto;" />
+          Show Moon (with phase)
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px;">
           <input id="showDateTime" type="checkbox" style="width: auto;" checked />
           Show date/time
         </label>
@@ -98,8 +106,8 @@
 
   <!-- Astronomy Engine supplies browser-side lunar position calculations, including simulated dates. -->
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
-  <script src="tideClock.js?v=12"></script>
+  <script src="tideClock.js?v=15"></script>
   <script src="particles.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

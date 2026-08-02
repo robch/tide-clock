@@ -136,11 +136,22 @@ class TideClock {
    * @param {boolean} [opts.showHourHand] - whether to draw the hour hand
    * @param {boolean} [opts.showMinuteHand] - whether to draw the minute hand
    * @param {boolean} [opts.showSecondHand] - whether to draw the second hand
-   * @param {number|null} [moonOffsetHours] - precomputed Moon clock-offset
-   *   in hours (0 = transit/aligned with hour hand, +/- = before/after),
-   *   from app.js's moonOffsetHoursAt(); null/omitted skips drawing the Moon
+   * @param {Object} [bodies] - precomputed Sun/Moon positions from app.js
+   * @param {number|null} [bodies.moonOffsetHours] - Moon clock-offset in
+   *   hours (0 = transit/aligned with hour hand, +/- = before/after), from
+   *   bodyOffsetHoursAt(); null skips drawing the Moon
+   * @param {number|null} [bodies.sunOffsetHours] - Sun clock-offset in
+   *   hours, same convention (0 = solar noon); null skips drawing the Sun
+   * @param {number|null} [bodies.moonPhaseAngle] - Moon phase in degrees
+   *   (0=new, 90=first quarter, 180=full, 270=last quarter), from
+   *   moonPhaseAngleAt(); null draws the Moon without phase shading
    */
-  drawHands(now, opts = {}, moonOffsetHours = null) {
+  drawHands(now, opts = {}, bodies = {}) {
+    const {
+      moonOffsetHours = null,
+      sunOffsetHours = null,
+      moonPhaseAngle = null,
+    } = bodies;
     const ctx = this.handsCtx;
     const canvas = this.handsCanvas;
     const W = canvas.width;
@@ -152,10 +163,14 @@ class TideClock {
     ctx.clearRect(0, 0, W, H);
     this._drawHands(cx, cy, R, now, opts);
 
-    // Draw the Moon as a separate fixed-radius object outside the clock rim,
-    // using the precomputed offset (see moonOffsetHoursAt in app.js) so this
-    // works identically in real time and in simulated/animated time.
-    this._drawMoon(cx, cy, R, now, moonOffsetHours);
+    // Draw the Sun and Moon as separate fixed-radius objects outside the
+    // clock rim, using precomputed offsets (see bodyOffsetHoursAt in
+    // app.js) so this works identically in real time and in
+    // simulated/animated time. The Sun is drawn first/slightly further out
+    // so the Moon (usually the more interesting object) stays on top when
+    // the two happen to be near the same position.
+    this._drawSun(cx, cy, R, now, sunOffsetHours);
+    this._drawMoon(cx, cy, R, now, moonOffsetHours, moonPhaseAngle);
 
     // Draw the current-tide-height dot LAST, on top of the hands themselves
     // (this canvas is stacked above the face canvas, so anything drawn here
@@ -287,12 +302,15 @@ class TideClock {
     ctx.stroke();
   }
   /** Draws the Moon on a constant-radius outer orbit. `moonOffsetHours` is a
-   * precomputed value (see app.js: computeMoonAnchors/moonOffsetHoursAt) in
+   * precomputed value (see app.js: computeBodyAnchors/bodyOffsetHoursAt) in
    * clock-hours relative to the hour hand: 0 = lunar transit (aligned with
    * hour hand), negative = before transit/rising side, positive = after
    * transit/setting side. Pass null/undefined to skip drawing (e.g. no
-   * station/location selected yet, or anchors not yet computed). */
-  _drawMoon(cx, cy, R, now, moonOffsetHours) {
+   * station/location selected yet, or anchors not yet computed).
+   * `moonPhaseAngle` (degrees, 0=new/180=full, from app.js's
+   * moonPhaseAngleAt()) shades a terminator curve onto the disc; pass
+   * null/undefined to draw a plain (unshaded) disc instead. */
+  _drawMoon(cx, cy, R, now, moonOffsetHours, moonPhaseAngle = null) {
     if (moonOffsetHours === null || moonOffsetHours === undefined || !Number.isFinite(moonOffsetHours)) {
       return;
     }
@@ -302,21 +320,101 @@ class TideClock {
     const moonX = cx + moonRadius * Math.sin(theta);
     const moonY = cy - moonRadius * Math.cos(theta);
     const ctx = this.handsCtx;
+    const bodyR = 13;
 
     ctx.save();
     ctx.shadowColor = "rgba(220, 232, 238, 0.75)";
     ctx.shadowBlur = 12;
     ctx.beginPath();
-    ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
+    ctx.arc(moonX, moonY, bodyR, 0, Math.PI * 2);
     ctx.fillStyle = "#d8e1e4";
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(94, 111, 118, 0.42)";
-    for (const crater of [[-4, -3, 2.2], [4, 2, 2.8], [-1, 5, 1.5]]) {
-      ctx.beginPath();
-      ctx.arc(moonX + crater[0], moonY + crater[1], crater[2], 0, Math.PI * 2);
-      ctx.fill();
+
+    if (Number.isFinite(moonPhaseAngle)) {
+      this._drawMoonPhaseShading(ctx, moonX, moonY, bodyR, moonPhaseAngle);
+    } else {
+      // No phase data available - fall back to a plain disc with a few
+      // fixed surface marks so it still reads as "the Moon".
+      ctx.fillStyle = "rgba(94, 111, 118, 0.42)";
+      for (const crater of [[-4, -3, 2.2], [4, 2, 2.8], [-1, 5, 1.5]]) {
+        ctx.beginPath();
+        ctx.arc(moonX + crater[0], moonY + crater[1], crater[2], 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
+    ctx.restore();
+  }
+
+  /** Shades a disc of radius r centered at (x,y) with a Moon-phase
+   * terminator: darkens the unilluminated portion based on phaseDeg
+   * (0=new moon/fully dark, 90=first quarter/half lit, 180=full moon/fully
+   * lit, 270=last quarter). The illuminated region is bounded by a straight
+   * half-circle edge and a terminator ellipse whose width shrinks to 0 at
+   * new/full and to the full radius at the quarters - the standard
+   * "two half-ellipses" technique used for simple 2D moon-phase renders. */
+  _drawMoonPhaseShading(ctx, x, y, r, phaseDeg) {
+    const phaseFrac = (((phaseDeg % 360) + 360) % 360) / 360; // 0..1
+    const theta = phaseFrac * 2 * Math.PI; // 0=new, PI=full, 2PI=new
+    const waxing = phaseFrac < 0.5; // growing illumination (new -> full)
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Base disc: fully in shadow.
+    ctx.fillStyle = "#3a4650";
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+
+    // Illuminated region: a half-circle edge on one side, a terminator
+    // ellipse (whose semi-minor axis is |cos(theta)| * r) on the other.
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.arc(x, y, r, -Math.PI / 2, Math.PI / 2, !waxing);
+    ctx.ellipse(x, y, Math.abs(Math.cos(theta)) * r, r, 0, Math.PI / 2, -Math.PI / 2, waxing);
+    ctx.closePath();
+    ctx.fillStyle = "#d8e1e4";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Draws the Sun on a constant-radius outer orbit, using the same
+   * clock-hour-offset convention as the Moon (see _drawMoon): 0 = solar
+   * noon (aligned with the hour hand - the hour hand's original meaning,
+   * from sundials), negative = morning/rising side, positive =
+   * afternoon/setting side. Pass null/undefined to skip drawing. */
+  _drawSun(cx, cy, R, now, sunOffsetHours) {
+    if (sunOffsetHours === null || sunOffsetHours === undefined || !Number.isFinite(sunOffsetHours)) {
+      return;
+    }
+
+    const theta = TideClock.angleForTime(now) + (sunOffsetHours * Math.PI) / 6;
+    const sunRadius = R * 1.16; // slightly further out than the Moon's orbit
+    const sunX = cx + sunRadius * Math.sin(theta);
+    const sunY = cy - sunRadius * Math.cos(theta);
+    const ctx = this.handsCtx;
+    const bodyR = 10;
+
+    ctx.save();
+    ctx.shadowColor = "rgba(255, 214, 102, 0.85)";
+    ctx.shadowBlur = 14;
+    // Rays
+    ctx.strokeStyle = "rgba(255, 214, 102, 0.7)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const rayAngle = (i * Math.PI) / 4;
+      const innerR = bodyR + 4;
+      const outerR = bodyR + 9;
+      ctx.beginPath();
+      ctx.moveTo(sunX + innerR * Math.cos(rayAngle), sunY + innerR * Math.sin(rayAngle));
+      ctx.lineTo(sunX + outerR * Math.cos(rayAngle), sunY + outerR * Math.sin(rayAngle));
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, bodyR, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffd666";
+    ctx.fill();
     ctx.restore();
   }
 
